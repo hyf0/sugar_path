@@ -30,14 +30,11 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             }
             Component::CurDir => {}
             c @ Component::ParentDir => {
-                let is_last_none = ret.last().is_none();
+                let is_last_none = matches!(ret.last(), None | Some(Component::Prefix(_)));
                 if is_last_none {
                     ret.push(c);
                 } else {
-                    let is_last_root = matches!(
-                        ret.last().unwrap(),
-                        Component::RootDir | Component::Prefix(_)
-                    );
+                    let is_last_root = matches!(ret.last().unwrap(), Component::RootDir);
                     if is_last_root {
                         // do nothing
                     } else {
