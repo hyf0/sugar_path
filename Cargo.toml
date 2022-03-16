@@ -1,7 +1,11 @@
 [package]
 name = "sugar_path"
-version = "0.1.0"
+description = "Sugar functions for manipulating paths"
+repository = "https://github.com/iheyunfei/sugar_path"
+version = "0.0.1"
 edition = "2021"
+license = "MIT"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
