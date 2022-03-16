@@ -30,6 +30,7 @@ fn unix() {
 }
 
 #[cfg(target_family = "windows")]
+#[test]
 fn windows() {
   assert_eq!(Path::new("./fixtures///b/../b/c.js").normalize(), Path::new("fixtures\\b\\c.js"));
 }

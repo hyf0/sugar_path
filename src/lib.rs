@@ -2,18 +2,19 @@ use std::path::{Component, Path, PathBuf};
 
 use once_cell::sync::Lazy;
 
-pub(crate) static POSIX_CWD: Lazy<PathBuf> = Lazy::new(|| {
+pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
     let mut cwd = std::env::current_dir().unwrap();
     cwd
 });
 
 pub trait PathSugar {
     fn normalize(&self) -> PathBuf;
+    fn resolve(&self) -> PathBuf;
 }
 
-impl PathSugar for Path {
-    fn normalize(&self) -> PathBuf {
-        let mut components = self.components().peekable();
+#[inline]
+fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
+  let mut components = path.components().peekable();
         let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
             components.next();
             vec![c]
@@ -52,13 +53,38 @@ impl PathSugar for Path {
                 }
             }
         }
-        let p = ret
+        
+        ret
+}
+
+#[inline]
+fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
+  components
             .into_iter()
             .map(|c| c.as_os_str())
             .fold(PathBuf::new(), |mut acc, cur| {
                 acc.push(cur);
                 acc
-            });
-        p
-    }
+            })
 }
+
+
+impl PathSugar for Path {
+    fn normalize(&self) -> PathBuf {
+        let components = normalize_to_component_vec(self);
+        component_vec_to_path_buf(components)
+    }
+    fn resolve(&self) -> PathBuf {
+      let mut components = self.components().peekable();
+      if components.peek().is_none() {
+        CWD.clone()
+      } else {
+        let components = normalize_to_component_vec(self);
+        if components.len() == 0 {
+          CWD.clone()
+        } else {
+          component_vec_to_path_buf(components)
+        }
+      }
+    }
+  }
