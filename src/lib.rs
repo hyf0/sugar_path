@@ -34,7 +34,10 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
                 if is_last_none {
                     ret.push(c);
                 } else {
-                    let is_last_root = matches!(ret.last().unwrap(), Component::RootDir);
+                    let is_last_root = matches!(
+                        ret.last().unwrap(),
+                        Component::RootDir | Component::Prefix(_)
+                    );
                     if is_last_root {
                         // do nothing
                     } else {
@@ -53,7 +56,6 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             }
         }
     }
-
     ret
 }
 
@@ -73,10 +75,16 @@ impl PathSugar for Path {
         if cfg!(target_family = "windows") {
             // TODO: we may need to do it more delegated
             let safe = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
-            let components = normalize_to_component_vec(&safe);
+            let mut components = normalize_to_component_vec(&safe);
+            if components.len() == 1 && matches!(components[0], Component::Prefix(_)) {
+                components.push(Component::CurDir)
+            }
             component_vec_to_path_buf(components)
         } else {
-            let components = normalize_to_component_vec(self);
+            let mut components = normalize_to_component_vec(self);
+            if components.len() == 0 {
+                components.push(Component::CurDir)
+            }
             component_vec_to_path_buf(components)
         }
     }

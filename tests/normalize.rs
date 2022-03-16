@@ -67,8 +67,23 @@ fn unix() {
         Path::new("foo/bar\\baz").normalize(),
         Path::new("foo/bar\\baz")
     );
-    // TODO: how we handle ""
-    // assert_eq!(&nodejs_path::posix::normalize(""), ".");
+    assert_eq!(
+        Path::new("/a/b/c/../../../").normalize(),
+        Path::new("/")
+    );
+    assert_eq!(
+        Path::new("a/b/c/../../../").normalize(),
+        Path::new(".")
+    );
+    assert_eq!(
+        Path::new("a/b/c/../../..").normalize(),
+        Path::new(".")
+    );
+
+    assert_eq!(
+        Path::new("").normalize(),
+        Path::new(".")
+    );
 }
 
 #[cfg(target_family = "windows")]
