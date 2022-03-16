@@ -71,6 +71,7 @@ fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
 impl PathSugar for Path {
     fn normalize(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
+            // TODO: we may need to do it more delegated
             let safe = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
             let components = normalize_to_component_vec(&safe);
             component_vec_to_path_buf(components)
