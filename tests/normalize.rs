@@ -33,4 +33,5 @@ fn unix() {
 #[test]
 fn windows() {
   assert_eq!(Path::new("./fixtures///b/../b/c.js").normalize(), Path::new("fixtures\\b\\c.js"));
+  assert_eq!(Path::new("/foo/../../../bar").normalize(), Path::new("\\bar"));
 }
