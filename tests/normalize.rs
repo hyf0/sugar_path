@@ -26,5 +26,10 @@ fn unix() {
   assert_eq!(Path::new("../.../../foobar/../../../bar/../../baz").normalize(), Path::new("../../../../baz"));
   assert_eq!(Path::new("foo/bar\\baz").normalize(), Path::new("foo/bar\\baz"));
   // TODO: how we handle ""
-    // assert_eq!(&nodejs_path::posix::normalize(""), ".");
+  // assert_eq!(&nodejs_path::posix::normalize(""), ".");
+}
+
+#[cfg(target_family = "windows")]
+fn windows() {
+  assert_eq!(Path::new("./fixtures///b/../b/c.js").normalize(), Path::new("fixtures\\b\\c.js"));
 }
