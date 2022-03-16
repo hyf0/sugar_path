@@ -98,7 +98,9 @@ fn windows() {
         Path::new("\\bar")
     );
     assert_eq!(Path::new("a//b//../b").normalize(), Path::new("a\\b"));
+
     assert_eq!(Path::new("a//b//./c").normalize(), Path::new("a\\b\\c"));
+    
     assert_eq!(
         Path::new("//server/share/dir/file.ext").normalize(),
         Path::new("\\\\server\\share\\dir\\file.ext")
