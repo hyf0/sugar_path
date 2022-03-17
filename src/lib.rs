@@ -8,6 +8,30 @@ pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
 });
 
 pub trait PathSugar {
+    /// normalizes the given path, resolving `'..'` and `'.'` segments.
+    ///
+    /// When multiple, sequential path segment separation characters are found (e.g. `/` on POSIX and either `\` or `/` on Windows), they are replaced by a single instance of the platform-specific path segment separator (`/` on POSIX and `\` on Windows). Trailing separators are preserved.
+    ///
+    /// If the path is a zero-length string, `'.'` is returned, representing the current working directory.
+    ///
+    /// For example, on POSIX:
+    /// ```rust
+    /// #[cfg(target_family = "unix")]
+    /// assert_eq!(Path::new("/foo/bar//baz/asdf/quux/..").normalize(), Path::new("/foo/bar/baz/asdf"));
+    /// ```
+    /// 
+    /// On Windows:
+    /// ```rust
+    /// #[cfg(target_family = "windows")]
+    /// assert_eq!(Path::new("C:\\temp\\\\foo\\bar\\..\\").normalize(), Path::new("C:\\temp\\foo\\"));
+    /// ```
+    /// 
+    /// Since Windows recognizes multiple path separators, both separators will be replaced by instances of the Windows preferred separator (`\`):
+    /// ```rust
+    /// #[cfg(target_family = "windows")]
+    /// assert_eq!(Path::new("C:////temp\\\\/\\/\\/foo/bar").normalize(), Path::new("C:\\temp\\foo\\bar"));
+    /// ```
+
     fn normalize(&self) -> PathBuf;
     fn resolve(&self) -> PathBuf;
 }
@@ -34,7 +58,10 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
                 if is_last_none {
                     ret.push(c);
                 } else {
-                    let is_last_root = matches!(ret.last().unwrap(), Component::RootDir | Component::Prefix(_));
+                    let is_last_root = matches!(
+                        ret.last().unwrap(),
+                        Component::RootDir | Component::Prefix(_)
+                    );
                     if is_last_root {
                         // do nothing
                     } else {
