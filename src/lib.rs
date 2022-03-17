@@ -31,6 +31,10 @@ pub trait PathSugar {
     /// assert_eq!(Path::new("C:////temp\\\\/\\/\\/foo/bar").normalize(), Path::new("C:\\temp\\foo\\bar"));
     /// ```
     fn normalize(&self) -> PathBuf;
+
+    /// If the path is absolute, normalize and return it.
+    /// 
+    /// If the path is not absolute, Using CWD concat the path, normalize and return it.
     fn resolve(&self) -> PathBuf;
 }
 
