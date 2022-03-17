@@ -27,10 +27,13 @@ fn unix() {
     );
     assert_eq!(path_buf!("a/b/c/", "../../..").resolve(), get_cwd());
     assert_eq!(path_buf!(".").resolve(), get_cwd());
+    assert_eq!(path_buf!().resolve(), get_cwd());
+    assert_eq!(path_buf!("a").resolve(), get_cwd().join("a"));
     assert_eq!(
         path_buf!("/some/dir", ".", "/absolute/").resolve(),
         path_buf!("/absolute")
     );
+    println!("path: {:?}", path_buf!("/some/dir", "."));
     assert_eq!(
         path_buf!("/foo/tmp.3/", "../tmp.3/cycles/root.js").resolve(),
         path_buf!("/foo/tmp.3/cycles/root.js")

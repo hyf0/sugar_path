@@ -71,8 +71,8 @@ impl PathSugar for Path {
     fn normalize(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
             // TODO: we may need to do it more delegated
-            let safe = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
-            let mut components = normalize_to_component_vec(&safe);
+            let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
+            let mut components = normalize_to_component_vec(&path);
             if components.len() == 1 && matches!(components[0], Component::Prefix(_)) {
                 components.push(Component::CurDir)
             }
@@ -86,15 +86,22 @@ impl PathSugar for Path {
         }
     }
     fn resolve(&self) -> PathBuf {
-        let mut components = self.components().peekable();
-        if components.peek().is_none() {
-            CWD.clone()
-        } else {
-            let components = normalize_to_component_vec(self);
-            if components.len() == 0 {
-                CWD.clone()
+        if cfg!(target_family = "windows") {
+            let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
+            if path.is_absolute() {
+                path.normalize()
             } else {
-                component_vec_to_path_buf(components)
+                let mut cwd = CWD.clone();
+                cwd.push(path);
+                cwd.normalize()
+            }
+        } else {
+            if self.is_absolute() {
+                self.normalize()
+            } else {
+                let mut cwd = CWD.clone();
+                cwd.push(self);
+                cwd.normalize()
             }
         }
     }
