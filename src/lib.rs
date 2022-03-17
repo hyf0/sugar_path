@@ -14,20 +14,19 @@ pub trait PathSugar {
     ///
     /// If the path is a zero-length string, `'.'` is returned, representing the current working directory.
     ///
-    /// For example, on POSIX:
     /// ```rust
+    /// use std::path::Path;
+    /// use sugar_path::PathSugar;
+    /// 
+    /// // For example, on POSIX:
     /// #[cfg(target_family = "unix")]
     /// assert_eq!(Path::new("/foo/bar//baz/asdf/quux/..").normalize(), Path::new("/foo/bar/baz/asdf"));
-    /// ```
-    ///
-    /// On Windows:
-    /// ```rust
+    /// 
+    /// // On Windows:
     /// #[cfg(target_family = "windows")]
     /// assert_eq!(Path::new("C:\\temp\\\\foo\\bar\\..\\").normalize(), Path::new("C:\\temp\\foo\\"));
-    /// ```
-    ///
-    /// Since Windows recognizes multiple path separators, both separators will be replaced by instances of the Windows preferred separator (`\`):
-    /// ```rust
+    /// 
+    /// // Since Windows recognizes multiple path separators, both separators will be replaced by instances of the Windows preferred separator (`\`):
     /// #[cfg(target_family = "windows")]
     /// assert_eq!(Path::new("C:////temp\\\\/\\/\\/foo/bar").normalize(), Path::new("C:\\temp\\foo\\bar"));
     /// ```
