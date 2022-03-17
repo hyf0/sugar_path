@@ -19,19 +19,18 @@ pub trait PathSugar {
     /// #[cfg(target_family = "unix")]
     /// assert_eq!(Path::new("/foo/bar//baz/asdf/quux/..").normalize(), Path::new("/foo/bar/baz/asdf"));
     /// ```
-    /// 
+    ///
     /// On Windows:
     /// ```rust
     /// #[cfg(target_family = "windows")]
     /// assert_eq!(Path::new("C:\\temp\\\\foo\\bar\\..\\").normalize(), Path::new("C:\\temp\\foo\\"));
     /// ```
-    /// 
+    ///
     /// Since Windows recognizes multiple path separators, both separators will be replaced by instances of the Windows preferred separator (`\`):
     /// ```rust
     /// #[cfg(target_family = "windows")]
     /// assert_eq!(Path::new("C:////temp\\\\/\\/\\/foo/bar").normalize(), Path::new("C:\\temp\\foo\\bar"));
     /// ```
-
     fn normalize(&self) -> PathBuf;
     fn resolve(&self) -> PathBuf;
 }
@@ -100,7 +99,7 @@ impl PathSugar for Path {
             // TODO: we may need to do it more delegated
             let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
             let mut components = normalize_to_component_vec(&path);
-            if components.len() == 1 && matches!(components[0], Component::Prefix(_)) {
+            if components.len() == 0 {
                 components.push(Component::CurDir)
             }
             component_vec_to_path_buf(components)

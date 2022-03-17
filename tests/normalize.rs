@@ -67,28 +67,17 @@ fn unix() {
         Path::new("foo/bar\\baz").normalize(),
         Path::new("foo/bar\\baz")
     );
-    assert_eq!(
-        Path::new("/a/b/c/../../../").normalize(),
-        Path::new("/")
-    );
-    assert_eq!(
-        Path::new("a/b/c/../../../").normalize(),
-        Path::new(".")
-    );
-    assert_eq!(
-        Path::new("a/b/c/../../..").normalize(),
-        Path::new(".")
-    );
+    assert_eq!(Path::new("/a/b/c/../../../").normalize(), Path::new("/"));
+    assert_eq!(Path::new("a/b/c/../../../").normalize(), Path::new("."));
+    assert_eq!(Path::new("a/b/c/../../..").normalize(), Path::new("."));
 
-    assert_eq!(
-        Path::new("").normalize(),
-        Path::new(".")
-    );
+    assert_eq!(Path::new("").normalize(), Path::new("."));
 }
 
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {
+    assert_eq!(Path::new("").normalize(), Path::new("."));
     assert_eq!(
         Path::new("./fixtures///b/../b/c.js").normalize(),
         Path::new("fixtures\\b\\c.js")
@@ -98,9 +87,7 @@ fn windows() {
         Path::new("\\bar")
     );
     assert_eq!(Path::new("a//b//../b").normalize(), Path::new("a\\b"));
-
     assert_eq!(Path::new("a//b//./c").normalize(), Path::new("a\\b\\c"));
-    
     assert_eq!(
         Path::new("//server/share/dir/file.ext").normalize(),
         Path::new("\\\\server\\share\\dir\\file.ext")
@@ -113,11 +100,11 @@ fn windows() {
         Path::new("/a/b/c/../../../x/y/z").normalize(),
         Path::new("\\x\\y\\z")
     );
-    assert_eq!(Path::new("C:").normalize(), Path::new("C:."));
-    assert_eq!(Path::new("C:..\\abc").normalize(), Path::new("C:..\\abc"));
+    assert_eq!(Path::new("C:").normalize(), Path::new("C:"));
+    assert_eq!(Path::new("C:..\\abc").normalize(), Path::new("C:\\abc"));
     assert_eq!(
         Path::new("C:..\\..\\abc\\..\\def").normalize(),
-        Path::new("C:..\\..\\def")
+        Path::new("C:\\def")
     );
     assert_eq!(Path::new("C:\\.").normalize(), Path::new("C:\\"));
 
