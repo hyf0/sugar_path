@@ -47,7 +47,7 @@ fn unix() {
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {
-  assert_eq!(path_buf!("c:/blah\\blah", "d:/games", "c:../a"), path_buf!("c:\\blah\\a"));
+  assert_eq!(path_buf!("c:/blah\\blah", "d:/games", "c:../a"), path_buf!("c:\\a"));
   assert_eq!(path_buf!("c:/ignore", "d:\\a/b\\c/d", "\\e.exe"), path_buf!("d:\\e.exe"));
   assert_eq!(path_buf!("c:/ignore", "c:/some/file"), path_buf!("c:\\some\\file"));
   assert_eq!(path_buf!("d:/ignore", "d:some/dir//"), path_buf!("d:\\ignore\\some\\dir"));
