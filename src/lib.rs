@@ -1,4 +1,7 @@
-use std::path::{Component, Path, PathBuf};
+use std::{
+    fmt::format,
+    path::{Component, Path, PathBuf, Prefix},
+};
 
 use once_cell::sync::Lazy;
 
@@ -126,12 +129,27 @@ impl PathSugar for Path {
             // Consider c:
             println!("self {:?} is_absolute {:?}", self, self.is_absolute());
             println!("path {:?} is_absolute {:?}", path, path.is_absolute());
-            if path.is_absolute() && matches!(path.components().nth(2), Some(Component::RootDir)) {
+            if path.is_absolute() {
                 path.normalize()
             } else {
-                let mut cwd = CWD.clone();
-                cwd.push(path);
-                cwd.normalize()
+                let mut components = path.components();
+                if matches!(components.next(), Some(Component::Prefix(_)))
+                    && !matches!(components.next(), Some(Component::RootDir))
+                {
+                    // TODO: Windows has the concept of drive-specific current working
+                    // directories. If we've resolved a drive letter but not yet an
+                    // absolute path, get cwd for that drive, or the process cwd if
+                    // the drive cwd is not available. We're sure the device is not
+                    // a UNC path at this points, because UNC paths are always absolute.
+                    let mut components = path.components().into_iter().collect::<Vec<_>>();
+                    components.insert(1, Component::RootDir);
+                    component_vec_to_path_buf(components).normalize()
+                } else {
+                    let mut cwd = CWD.clone();
+                    // path.pr
+                    cwd.push(path);
+                    cwd.normalize()
+                }
             }
         } else {
             if self.is_absolute() {
