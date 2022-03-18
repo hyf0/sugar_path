@@ -147,6 +147,10 @@ impl PathSugar for Path {
         if from == to {
             PathBuf::new()
         } else {
+            let from_components = from.components();
+            let to_components = to.components();
+
+
             PathBuf::new()
         }
     }
