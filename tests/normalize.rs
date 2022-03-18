@@ -102,6 +102,7 @@ fn windows() {
     );
     assert_eq!(Path::new("C:").normalize(), Path::new("C:."));
     assert_eq!(Path::new("C:/").normalize(), Path::new("C:\\"));
+    assert_eq!(Path::new("").normalize(), Path::new("."));
     assert_eq!(Path::new("c:/ignore").normalize(), Path::new("c:\\ignore"));
     assert_eq!(Path::new("C:../a").normalize(), Path::new("C:..\\a"));
     assert_eq!(Path::new("c:/../a").normalize(), Path::new("c:\\a"));
