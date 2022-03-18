@@ -146,7 +146,6 @@ impl PathSugar for Path {
                     component_vec_to_path_buf(components).normalize()
                 } else {
                     let mut cwd = CWD.clone();
-                    // path.pr
                     cwd.push(path);
                     cwd.normalize()
                 }
