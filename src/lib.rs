@@ -63,6 +63,7 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
                 if is_last_none {
                     ret.push(c);
                 } else {
+                  println!("is_last_root {:?}", is_last_root);
                     let is_last_root = matches!(
                         ret.last().unwrap(),
                         Component::RootDir | Component::Prefix(_)
