@@ -2,6 +2,7 @@ use std::path::Path;
 
 use sugar_path::PathSugar;
 
+#[cfg(target_family = "unix")]
 #[test]
 #[ignore = "reason"]
 fn unix() {

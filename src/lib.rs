@@ -124,6 +124,8 @@ impl PathSugar for Path {
         if cfg!(target_family = "windows") {
             let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
             // Consider c:
+            println!("self {:?} is_absolute {:?}", self, self.is_absolute());
+            println!("path {:?} is_absolute {:?}", path, path.is_absolute());
             if path.is_absolute() && matches!(path.components().nth(2), Some(Component::RootDir)) {
                 path.normalize()
             } else {
