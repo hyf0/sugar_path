@@ -3,6 +3,7 @@ use std::path::Path;
 use sugar_path::PathSugar;
 
 #[test]
+#[ignore = "reason"]
 fn unix() {
     let cases = [
         ("/var/lib", "/var", ".."),
