@@ -52,7 +52,7 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
     };
 
     for component in components {
-        print!("process {:?}", component);
+        println!("process {:?}", component);
         match component {
             Component::Prefix(..) => unreachable!(),
             Component::RootDir => {
