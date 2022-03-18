@@ -42,7 +42,7 @@ pub trait PathSugar {
 
 #[inline]
 fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
-    print!("start {:?}", path);
+    println!("start {:?}", path);
     let mut components = path.components().peekable();
     let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
         components.next();
