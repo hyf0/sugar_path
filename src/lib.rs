@@ -36,6 +36,8 @@ pub trait PathSugar {
     /// 
     /// If the path is not absolute, Using CWD concat the path, normalize and return it.
     fn resolve(&self) -> PathBuf;
+
+    fn relative(&self, base: &Path) -> PathBuf;
 }
 
 #[inline]
@@ -133,5 +135,9 @@ impl PathSugar for Path {
                 cwd.normalize()
             }
         }
+    }
+
+    fn relative(&self, base: &Path) -> PathBuf {
+      PathBuf::new()
     }
 }
