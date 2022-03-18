@@ -123,7 +123,8 @@ impl PathSugar for Path {
     fn resolve(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
             let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
-            if path.is_absolute() && path.components().nth(2).is_some() {
+            // Consider c:
+            if path.is_absolute() && matches!(path.components().nth(2), Some(Component::RootDir)) {
                 path.normalize()
             } else {
                 let mut cwd = CWD.clone();
@@ -149,7 +150,6 @@ impl PathSugar for Path {
         } else {
             let from_components = from.components();
             let to_components = to.components();
-
 
             PathBuf::new()
         }
