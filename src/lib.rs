@@ -106,7 +106,7 @@ impl PathSugar for Path {
             // TODO: we may need to do it more delegated
             let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
             let mut components = normalize_to_component_vec(&path);
-            if components.len() == 0 {
+            if components.len() == 1 && matches!(components[0], Component::Prefix(_)) {
                 components.push(Component::CurDir)
             }
             component_vec_to_path_buf(components)
