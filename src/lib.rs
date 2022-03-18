@@ -42,6 +42,7 @@ pub trait PathSugar {
 
 #[inline]
 fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
+    print!("start {:?}", path);
     let mut components = path.components().peekable();
     let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
         components.next();
@@ -51,6 +52,7 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
     };
 
     for component in components {
+        print!("process {:?}", component);
         match component {
             Component::Prefix(..) => unreachable!(),
             Component::RootDir => {
@@ -58,16 +60,16 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             }
             Component::CurDir => {}
             c @ Component::ParentDir => {
-              println!("last {:?}", ret.last());
+                println!("last {:?}", ret.last());
                 let is_last_none = matches!(ret.last(), None);
                 if is_last_none {
                     ret.push(c);
                 } else {
-                  let is_last_root = matches!(
-                    ret.last().unwrap(),
-                    Component::RootDir | Component::Prefix(_)
-                  );
-                  println!("is_last_root {:?}", is_last_root);
+                    let is_last_root = matches!(
+                        ret.last().unwrap(),
+                        Component::RootDir | Component::Prefix(_)
+                    );
+                    println!("is_last_root {:?}", is_last_root);
                     if is_last_root {
                         // do nothing
                     } else {
