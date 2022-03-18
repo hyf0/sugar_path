@@ -17,15 +17,15 @@ pub trait PathSugar {
     /// ```rust
     /// use std::path::Path;
     /// use sugar_path::PathSugar;
-    /// 
+    ///
     /// // For example, on POSIX:
     /// #[cfg(target_family = "unix")]
     /// assert_eq!(Path::new("/foo/bar//baz/asdf/quux/..").normalize(), Path::new("/foo/bar/baz/asdf"));
-    /// 
+    ///
     /// // On Windows:
     /// #[cfg(target_family = "windows")]
     /// assert_eq!(Path::new("C:\\temp\\\\foo\\bar\\..\\").normalize(), Path::new("C:\\temp\\foo\\"));
-    /// 
+    ///
     /// // Since Windows recognizes multiple path separators, both separators will be replaced by instances of the Windows preferred separator (`\`):
     /// #[cfg(target_family = "windows")]
     /// assert_eq!(Path::new("C:////temp\\\\/\\/\\/foo/bar").normalize(), Path::new("C:\\temp\\foo\\bar"));
@@ -33,7 +33,7 @@ pub trait PathSugar {
     fn normalize(&self) -> PathBuf;
 
     /// If the path is absolute, normalize and return it.
-    /// 
+    ///
     /// If the path is not absolute, Using CWD concat the path, normalize and return it.
     fn resolve(&self) -> PathBuf;
 
@@ -58,6 +58,7 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             }
             Component::CurDir => {}
             c @ Component::ParentDir => {
+              println!("last {:?}", ret.last());
                 let is_last_none = matches!(ret.last(), None);
                 if is_last_none {
                     ret.push(c);
@@ -138,6 +139,12 @@ impl PathSugar for Path {
     }
 
     fn relative(&self, base: &Path) -> PathBuf {
-      PathBuf::new()
+        let from = self.resolve();
+        let to = base.resolve();
+        if from == to {
+            PathBuf::new()
+        } else {
+            PathBuf::new()
+        }
     }
 }
