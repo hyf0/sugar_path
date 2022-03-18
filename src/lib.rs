@@ -88,7 +88,6 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             }
         }
         println!("status  {:?}", ret);
-
       }
     ret
 }
