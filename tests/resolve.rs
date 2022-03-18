@@ -47,16 +47,19 @@ fn unix() {
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {
-  assert_eq!(path_buf!("c:/blah\\blah", "d:/games", "c:../a"), path_buf!("c:\\a"));
-  assert_eq!(path_buf!("c:/ignore", "d:\\a/b\\c/d", "\\e.exe"), path_buf!("d:\\e.exe"));
-  assert_eq!(path_buf!("c:/ignore", "c:/some/file"), path_buf!("c:\\some\\file"));
-  assert_eq!(path_buf!("d:/ignore", "d:some/dir//"), path_buf!("d:\\ignore\\some\\dir"));
-  assert_eq!(path_buf!("."), get_cwd());
-  assert_eq!(path_buf!("//server/share", "..", "relative\\"), path_buf!("\\\\server\\share\\relative"));
-  assert_eq!(path_buf!("c:/", "//"), path_buf!("c:\\"));
-  assert_eq!(path_buf!("c:/", "//dir"), path_buf!("c:\\dir"));
-  assert_eq!(path_buf!("c:/", "//server/share"), path_buf!("\\\\server\\share\\"));
-  assert_eq!(path_buf!("c:/", "//server//share"), path_buf!("\\\\server\\share\\"));
-  assert_eq!(path_buf!("c:/", "///some//dir"), path_buf!("c:\\some\\dir"));
-  assert_eq!(path_buf!("C:\\foo\\tmp.3\\", "..\\tmp.3\\cycles\\root.js"), path_buf!("C:\\foo\\tmp.3\\cycles\\root.js"));
+    assert_eq!(path_buf!("c:../a"), path_buf!("c:\\a"));
+    assert_eq!(path_buf!("a").resolve(), get_cwd().join("a"));
+    assert_eq!(path_buf!("."), get_cwd());
+    assert_eq!(path_buf!(""), get_cwd());
+    assert_eq!(path_buf!("c:/ignore"), path_buf!("c:\\ignore"));
+    assert_eq!(path_buf!("c:\\some\\file"), path_buf!("c:\\some\\file"));
+    assert_eq!(path_buf!("some/dir//"), get_cwd().join("some").join("dir"));
+    assert_eq!(
+        path_buf!("//server/share", "..", "relative\\"),
+        get_cwd().join(path_buf!("\\\\server\\share\\relative"))
+    );
+    assert_eq!(
+        path_buf!("..\\tmp.3\\cycles\\root.js"),
+        get_cwd().join(path_buf!("tmp.3\\cycles\\root.js"))
+    );
 }
