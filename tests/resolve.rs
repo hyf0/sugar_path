@@ -47,10 +47,11 @@ fn unix() {
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {
-    assert_eq!(path_buf!("c:../a"), path_buf!("c:\\a"));
+    assert_eq!(path_buf!("c:../a").resolve(), path_buf!("c:\\a"));
     assert_eq!(path_buf!("a").resolve(), get_cwd().join("a"));
     assert_eq!(path_buf!("."), get_cwd());
     assert_eq!(path_buf!(""), get_cwd());
+    assert_eq!(path_buf!("../../../foo/../../../bar"), get_cwd().push("bar"));
     assert_eq!(path_buf!("c:/ignore"), path_buf!("c:\\ignore"));
     assert_eq!(path_buf!("c:\\some\\file"), path_buf!("c:\\some\\file"));
     assert_eq!(path_buf!("some/dir//"), get_cwd().join("some").join("dir"));
