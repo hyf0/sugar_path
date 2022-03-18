@@ -69,7 +69,7 @@ fn windows() {
     {
         let mut right = get_cwd();
         right.pop();
-        right.join(path_buf!("tmp.3\\cycles\\root.js"));
+        right = right.join(path_buf!("tmp.3\\cycles\\root.js"));
         assert_eq!(path_buf!("..\\tmp.3\\cycles\\root.js").resolve(), right);
     }
 }
