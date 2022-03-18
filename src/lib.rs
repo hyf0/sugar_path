@@ -17,25 +17,32 @@ pub trait PathSugar {
     /// ```rust
     /// use std::path::Path;
     /// use sugar_path::PathSugar;
-    /// 
+    ///
     /// // For example, on POSIX:
     /// #[cfg(target_family = "unix")]
     /// assert_eq!(Path::new("/foo/bar//baz/asdf/quux/..").normalize(), Path::new("/foo/bar/baz/asdf"));
-    /// 
+    ///
     /// // On Windows:
     /// #[cfg(target_family = "windows")]
     /// assert_eq!(Path::new("C:\\temp\\\\foo\\bar\\..\\").normalize(), Path::new("C:\\temp\\foo\\"));
-    /// 
+    ///
     /// // Since Windows recognizes multiple path separators, both separators will be replaced by instances of the Windows preferred separator (`\`):
     /// #[cfg(target_family = "windows")]
     /// assert_eq!(Path::new("C:////temp\\\\/\\/\\/foo/bar").normalize(), Path::new("C:\\temp\\foo\\bar"));
     /// ```
     fn normalize(&self) -> PathBuf;
+
+    /// If the path is absolute, normalize and return it.
+    ///
+    /// If the path is not absolute, Using CWD concat the path, normalize and return it.
     fn resolve(&self) -> PathBuf;
+
+    fn relative(&self, base: &Path) -> PathBuf;
 }
 
 #[inline]
 fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
+    println!("start {:?}", path);
     let mut components = path.components().peekable();
     let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
         components.next();
@@ -45,6 +52,7 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
     };
 
     for component in components {
+        println!("process {:?}", component);
         match component {
             Component::Prefix(..) => unreachable!(),
             Component::RootDir => {
@@ -52,14 +60,13 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             }
             Component::CurDir => {}
             c @ Component::ParentDir => {
-                let is_last_none = matches!(ret.last(), None);
+                println!("last {:?}", ret.last());
+                let is_last_none = matches!(ret.last(), None | Some(Component::Prefix(_)));
                 if is_last_none {
                     ret.push(c);
                 } else {
-                    let is_last_root = matches!(
-                        ret.last().unwrap(),
-                        Component::RootDir | Component::Prefix(_)
-                    );
+                    let is_last_root = matches!(ret.last().unwrap(), Component::RootDir);
+                    println!("is_last_root {:?}", is_last_root);
                     if is_last_root {
                         // do nothing
                     } else {
@@ -77,6 +84,7 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
                 ret.push(c);
             }
         }
+        println!("status  {:?}", ret);
     }
     ret
 }
@@ -98,7 +106,9 @@ impl PathSugar for Path {
             // TODO: we may need to do it more delegated
             let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
             let mut components = normalize_to_component_vec(&path);
-            if components.len() == 0 {
+            if components.is_empty()
+                || (components.len() == 1 && matches!(components[0], Component::Prefix(_)))
+            {
                 components.push(Component::CurDir)
             }
             component_vec_to_path_buf(components)
@@ -128,6 +138,16 @@ impl PathSugar for Path {
                 cwd.push(self);
                 cwd.normalize()
             }
+        }
+    }
+
+    fn relative(&self, base: &Path) -> PathBuf {
+        let from = self.resolve();
+        let to = base.resolve();
+        if from == to {
+            PathBuf::new()
+        } else {
+            PathBuf::new()
         }
     }
 }

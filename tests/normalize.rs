@@ -100,11 +100,19 @@ fn windows() {
         Path::new("/a/b/c/../../../x/y/z").normalize(),
         Path::new("\\x\\y\\z")
     );
-    assert_eq!(Path::new("C:").normalize(), Path::new("C:"));
-    assert_eq!(Path::new("C:..\\abc").normalize(), Path::new("C:abc"));
+    assert_eq!(Path::new("C:").normalize(), Path::new("C:."));
+    assert_eq!(Path::new("C:/").normalize(), Path::new("C:\\"));
+    assert_eq!(Path::new("").normalize(), Path::new("."));
+    assert_eq!(Path::new("c:/ignore").normalize(), Path::new("c:\\ignore"));
+    assert_eq!(Path::new("C:../a").normalize(), Path::new("C:..\\a"));
+    assert_eq!(Path::new("c:/../a").normalize(), Path::new("c:\\a"));
     assert_eq!(
         Path::new("C:..\\..\\abc\\..\\def").normalize(),
-        Path::new("C:def")
+        Path::new("C:..\\..\\def")
+    );
+    assert_eq!(
+        Path::new("C:\\..\\..\\abc\\..\\def").normalize(),
+        Path::new("C:\\def")
     );
     assert_eq!(Path::new("C:\\.").normalize(), Path::new("C:\\"));
 
