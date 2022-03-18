@@ -52,7 +52,6 @@ fn windows() {
   assert_eq!(path_buf!("c:../a").resolve(), path_buf!("c:a"));
   assert_eq!(path_buf!("c:./a").resolve(), path_buf!("c:a"));
   assert_eq!(path_buf!("a").resolve(), get_cwd().join("a"));
-  assert_eq!(path_buf!("../../../foo/../../../bar").resolve(), get_cwd().join("bar"));
 
     assert_eq!(path_buf!("c:/ignore").resolve(), path_buf!("c:ignore"));
     assert_eq!(path_buf!("c:\\some\\file").resolve(), path_buf!("c:some\\file"));
