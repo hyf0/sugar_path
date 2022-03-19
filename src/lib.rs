@@ -45,7 +45,6 @@ pub trait PathSugar {
 
 #[inline]
 fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
-    println!("start {:?}", path);
     let mut components = path.components().peekable();
     let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
         components.next();
@@ -55,7 +54,6 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
     };
 
     for component in components {
-        println!("process {:?}", component);
         match component {
             Component::Prefix(..) => unreachable!(),
             Component::RootDir => {
@@ -63,13 +61,11 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             }
             Component::CurDir => {}
             c @ Component::ParentDir => {
-                println!("last {:?}", ret.last());
                 let is_last_none = matches!(ret.last(), None | Some(Component::Prefix(_)));
                 if is_last_none {
                     ret.push(c);
                 } else {
                     let is_last_root = matches!(ret.last().unwrap(), Component::RootDir);
-                    println!("is_last_root {:?}", is_last_root);
                     if is_last_root {
                         // do nothing
                     } else {
@@ -87,7 +83,6 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
                 ret.push(c);
             }
         }
-        println!("status  {:?}", ret);
     }
     ret
 }
@@ -127,8 +122,6 @@ impl PathSugar for Path {
         if cfg!(target_family = "windows") {
             let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
             // Consider c:
-            println!("self {:?} is_absolute {:?}", self, self.is_absolute());
-            println!("path {:?} is_absolute {:?}", path, path.is_absolute());
             if path.is_absolute() {
                 path.normalize()
             } else {
@@ -162,6 +155,7 @@ impl PathSugar for Path {
     }
 
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf {
+      println!("start from: {:?}, to: {:?}", self, to.as_ref());
         let from = self.resolve();
         let to = to.as_ref().resolve();
         if from == to {
@@ -197,6 +191,7 @@ impl PathSugar for Path {
             while i < longest_len {
                 let from_component = from_components.get(i);
                 let to_component = to_components.get(i);
+                println!("process from: {:?}, to: {:?}", from_component, to_component);
                 if cfg!(target_family = "windows") {
                     if let Some(Component::Normal(from_seg)) = from_component {
                         if let Some(Component::Normal(to_seg)) = to_component {
