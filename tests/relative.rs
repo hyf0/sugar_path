@@ -81,7 +81,7 @@ fn windows() {
 #[cfg(target_family = "windows")]
 #[test]
 #[ignore = "TODO: handle UNC path"]
-fn windows() {
+fn windows_unc() {
     let cases = [
         ("\\\\foo\\baz-quux\\bar", "\\\\foo\\baz", "..\\..\\baz"),
         ("\\\\foo\\baz-quux", "\\\\foo\\baz", "..\\baz"),
