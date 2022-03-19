@@ -2,7 +2,7 @@
 name = "sugar_path"
 description = "Sugar functions for manipulating paths"
 repository = "https://github.com/iheyunfei/sugar_path"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 license = "MIT"
 
