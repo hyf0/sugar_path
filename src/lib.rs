@@ -197,6 +197,15 @@ impl PathSugar for Path {
             while i < longest_len {
                 let from_component = from_components.get(i);
                 let to_component = to_components.get(i);
+                if cfg!(target_family = "windows") {
+                    if let Some(Component::Normal(from_seg)) = from_component {
+                        if let Some(Component::Normal(to_seg)) = to_component {
+                            if from_seg.to_ascii_lowercase() == to_seg.to_ascii_lowercase() {
+                                break;
+                            }
+                        }
+                    }
+                }
                 if from_component != to_component {
                     break;
                 }
