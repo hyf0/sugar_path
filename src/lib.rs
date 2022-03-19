@@ -155,7 +155,7 @@ impl PathSugar for Path {
     }
 
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf {
-      println!("start from: {:?}, to: {:?}", self, to.as_ref());
+        println!("start from: {:?}, to: {:?}", self, to.as_ref());
         let from = self.resolve();
         let to = to.as_ref().resolve();
         if from == to {
@@ -196,8 +196,8 @@ impl PathSugar for Path {
                     if let Some(Component::Normal(from_seg)) = from_component {
                         if let Some(Component::Normal(to_seg)) = to_component {
                             if from_seg.to_ascii_lowercase() == to_seg.to_ascii_lowercase() {
-                              i += 1;
-                              continue;
+                                i += 1;
+                                continue;
                             }
                         }
                     }
