@@ -62,21 +62,38 @@ fn windows() {
             "C:\\foo\\bar\\baz-quux",
             "..\\baz-quux",
         ),
-        ("\\\\foo\\bar", "\\\\foo\\bar\\baz", "baz"),
-        ("\\\\foo\\bar\\baz", "\\\\foo\\bar", ".."),
-        ("\\\\foo\\bar\\baz-quux", "\\\\foo\\bar\\baz", "..\\baz"),
+        ("\\\\foo\\bar\\baz", "C:\\baz", "C:\\baz"),
+        ("C:\\baz", "\\\\foo\\bar\\baz", "\\\\foo\\bar\\baz"),
+        ("C:\\baz-quux", "C:\\baz", "..\\baz"),
+        ("C:\\baz", "C:\\baz-quux", "..\\baz-quux"),
+    ];
+    cases.into_iter().for_each(|(from, to, right)| {
+        assert_eq!(
+            Path::new(from).relative(Path::new(to)),
+            Path::new(right),
+            "for input from: {} to: {}",
+            from,
+            to
+        );
+    });
+}
+
+#[cfg(target_family = "windows")]
+#[test]
+#[ignore = "TODO: handle UNC path"]
+fn windows() {
+    let cases = [
+        ("\\\\foo\\baz-quux\\bar", "\\\\foo\\baz", "..\\..\\baz"),
+        ("\\\\foo\\baz-quux", "\\\\foo\\baz", "..\\baz"),
+        ("\\\\foo\\baz", "\\\\foo\\baz-quux", "..\\baz-quux"),
         (
             "\\\\foo\\bar\\baz",
             "\\\\foo\\bar\\baz-quux",
             "..\\baz-quux",
         ),
-        ("C:\\baz-quux", "C:\\baz", "..\\baz"),
-        ("C:\\baz", "C:\\baz-quux", "..\\baz-quux"),
-        ("\\\\foo\\baz-quux\\bar", "\\\\foo\\baz", "..\\..\\baz"),
-        ("\\\\foo\\baz-quux", "\\\\foo\\baz", "..\\baz"),
-        ("\\\\foo\\baz", "\\\\foo\\baz-quux", "..\\baz-quux"),
-        ("C:\\baz", "\\\\foo\\bar\\baz", "\\\\foo\\bar\\baz"),
-        ("\\\\foo\\bar\\baz", "C:\\baz", "C:\\baz"),
+        ("\\\\foo\\bar", "\\\\foo\\bar\\baz", "baz"),
+        ("\\\\foo\\bar\\baz", "\\\\foo\\bar", ".."),
+        ("\\\\foo\\bar\\baz-quux", "\\\\foo\\bar\\baz", "..\\baz"),
     ];
     cases.into_iter().for_each(|(from, to, right)| {
         assert_eq!(
