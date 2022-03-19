@@ -80,20 +80,17 @@ fn windows() {
 
 #[cfg(target_family = "windows")]
 #[test]
-#[ignore = "TODO: handle UNC path"]
 fn windows_unc() {
     let cases = [
-        ("\\\\foo\\baz-quux\\bar", "\\\\foo\\baz", "..\\..\\baz"),
-        ("\\\\foo\\baz-quux", "\\\\foo\\baz", "..\\baz"),
-        ("\\\\foo\\baz", "\\\\foo\\baz-quux", "..\\baz-quux"),
+        ("\\\\foo\\bar", "\\\\foo\\bar\\baz", "baz"),
+        ("\\\\foo\\bar\\baz-quux", "\\\\foo\\bar\\baz", "..\\baz"),
+        ("\\\\foo\\baz-quux", "\\\\foo\\baz", "\\\\foo\\baz"),
         (
             "\\\\foo\\bar\\baz",
             "\\\\foo\\bar\\baz-quux",
             "..\\baz-quux",
         ),
-        ("\\\\foo\\bar", "\\\\foo\\bar\\baz", "baz"),
         ("\\\\foo\\bar\\baz", "\\\\foo\\bar", ".."),
-        ("\\\\foo\\bar\\baz-quux", "\\\\foo\\bar\\baz", "..\\baz"),
     ];
     cases.into_iter().for_each(|(from, to, right)| {
         assert_eq!(
