@@ -49,6 +49,7 @@ fn windows() {
         ("c:/aaaa/bbbb", "d:\\", "d:\\"),
         ("c:/AaAa/bbbb", "c:/aaaa/bbbb", ""),
         ("c:/aaaaa/", "c:/aaaa/cccc", "..\\aaaa\\cccc"),
+        ("c:/aaaaa/", "d:/aaaa/cccc", "d:\\aaaa\\cccc"),
         ("C:\\foo\\bar\\baz\\quux", "C:\\", "..\\..\\..\\.."),
         (
             "C:\\foo\\test",
