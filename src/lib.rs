@@ -40,7 +40,7 @@ pub trait PathSugar {
     /// If the path is not absolute, Using CWD concat the path, normalize and return it.
     fn resolve(&self) -> PathBuf;
 
-    fn relative(&self, base: &Path) -> PathBuf;
+    fn relative(&self, to: &Path) -> PathBuf;
 }
 
 #[inline]
@@ -161,16 +161,62 @@ impl PathSugar for Path {
         }
     }
 
-    fn relative(&self, base: &Path) -> PathBuf {
+    fn relative(&self, to: &Path) -> PathBuf {
         let from = self.resolve();
-        let to = base.resolve();
+        let to = to.resolve();
         if from == to {
             PathBuf::new()
         } else {
-            let from_components = from.components();
-            let to_components = to.components();
+            let from_components = from
+                .components()
+                .into_iter()
+                .filter_map(|com| {
+                    if let Component::Normal(seg) = com {
+                        Some(seg)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            let to_components = to
+                .components()
+                .into_iter()
+                .filter_map(|com| {
+                    if let Component::Normal(seg) = com {
+                        Some(seg)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            let mut ret = PathBuf::new();
+            let longest_len = if from_components.len() > to_components.len() {
+                from_components.len()
+            } else {
+                to_components.len()
+            };
+            let mut i = 0;
+            while i < longest_len {
+                let from_component = from_components.get(i);
+                let to_component = to_components.get(i);
+                if from_component != to_component {
+                    break;
+                }
+                i += 1;
+            }
+            let mut from_start = i;
+            while from_start < from_components.len() {
+              ret.push("..");
+              from_start += 1;
+            }
 
-            PathBuf::new()
+            let mut to_start = i;
+            while to_start < to_components.len() {
+              ret.push(to_components[to_start]);
+              to_start += 1;
+            }
+
+            ret
         }
     }
 }

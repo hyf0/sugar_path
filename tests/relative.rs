@@ -4,7 +4,6 @@ use sugar_path::PathSugar;
 
 #[cfg(target_family = "unix")]
 #[test]
-#[ignore = "reason"]
 fn unix() {
     let cases = [
         ("/var/lib", "/var", ".."),
@@ -25,7 +24,6 @@ fn unix() {
         ("/baz", "/baz-quux", "../baz-quux"),
         ("/page1/page2/foo", "/", "../../.."),
     ];
-
     cases.into_iter().for_each(|(from, to, right)| {
         assert_eq!(
             Path::new(from).relative(Path::new(to)),
