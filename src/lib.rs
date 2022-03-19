@@ -170,23 +170,21 @@ impl PathSugar for Path {
             let from_components = from
                 .components()
                 .into_iter()
-                .filter_map(|com| {
-                    if let Component::Normal(seg) = com {
-                        Some(seg)
-                    } else {
-                        None
-                    }
+                .filter(|com| {
+                    matches!(
+                        com,
+                        Component::Normal(_) | Component::Prefix(_) | Component::RootDir
+                    )
                 })
                 .collect::<Vec<_>>();
             let to_components = to
                 .components()
                 .into_iter()
-                .filter_map(|com| {
-                    if let Component::Normal(seg) = com {
-                        Some(seg)
-                    } else {
-                        None
-                    }
+                .filter(|com| {
+                    matches!(
+                        com,
+                        Component::Normal(_) | Component::Prefix(_) | Component::RootDir
+                    )
                 })
                 .collect::<Vec<_>>();
             let mut ret = PathBuf::new();

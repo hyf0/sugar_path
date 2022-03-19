@@ -26,6 +26,58 @@ fn unix() {
     ];
     cases.into_iter().for_each(|(from, to, right)| {
         assert_eq!(
+            Path::new(from).relative(to),
+            Path::new(right),
+            "for input from: {} to: {}",
+            from,
+            to
+        );
+    });
+}
+
+#[cfg(target_family = "windows")]
+#[test]
+fn windows() {
+    let cases = [
+        ("c:/blah\\blah", "d:/games", "d:\\games"),
+        ("c:/aaaa/bbbb", "c:/aaaa", ".."),
+        ("c:/aaaa/bbbb", "c:/cccc", "..\\..\\cccc"),
+        ("c:/aaaa/bbbb", "c:/aaaa/bbbb", ""),
+        ("c:/aaaa/bbbb", "c:/aaaa/cccc", "..\\cccc"),
+        ("c:/aaaa/", "c:/aaaa/cccc", "cccc"),
+        ("c:/", "c:\\aaaa\\bbbb", "aaaa\\bbbb"),
+        ("c:/aaaa/bbbb", "d:\\", "d:\\"),
+        ("c:/AaAa/bbbb", "c:/aaaa/bbbb", ""),
+        ("c:/aaaaa/", "c:/aaaa/cccc", "..\\aaaa\\cccc"),
+        ("C:\\foo\\bar\\baz\\quux", "C:\\", "..\\..\\..\\.."),
+        (
+            "C:\\foo\\test",
+            "C:\\foo\\test\\bar\\package.json",
+            "bar\\package.json",
+        ),
+        ("C:\\foo\\bar\\baz-quux", "C:\\foo\\bar\\baz", "..\\baz"),
+        (
+            "C:\\foo\\bar\\baz",
+            "C:\\foo\\bar\\baz-quux",
+            "..\\baz-quux",
+        ),
+        ("\\\\foo\\bar", "\\\\foo\\bar\\baz", "baz"),
+        ("\\\\foo\\bar\\baz", "\\\\foo\\bar", ".."),
+        ("\\\\foo\\bar\\baz-quux", "\\\\foo\\bar\\baz", "..\\baz"),
+        (
+            "\\\\foo\\bar\\baz",
+            "\\\\foo\\bar\\baz-quux",
+            "..\\baz-quux",
+        ),
+        ("C:\\baz-quux", "C:\\baz", "..\\baz"),
+        ("C:\\baz", "C:\\baz-quux", "..\\baz-quux"),
+        ("\\\\foo\\baz-quux", "\\\\foo\\baz", "..\\baz"),
+        ("\\\\foo\\baz", "\\\\foo\\baz-quux", "..\\baz-quux"),
+        ("C:\\baz", "\\\\foo\\bar\\baz", "\\\\foo\\bar\\baz"),
+        ("\\\\foo\\bar\\baz", "C:\\baz", "C:\\baz"),
+    ];
+    cases.into_iter().for_each(|(from, to, right)| {
+        assert_eq!(
             Path::new(from).relative(Path::new(to)),
             Path::new(right),
             "for input from: {} to: {}",
