@@ -40,7 +40,7 @@ pub trait PathSugar {
     /// If the path is not absolute, Using CWD concat the path, normalize and return it.
     fn resolve(&self) -> PathBuf;
 
-    fn relative(&self, to: &Path) -> PathBuf;
+    fn relative(&self, to: impl AsRef<Path>) -> PathBuf;
 }
 
 #[inline]
@@ -161,9 +161,9 @@ impl PathSugar for Path {
         }
     }
 
-    fn relative(&self, to: &Path) -> PathBuf {
+    fn relative(&self, to: impl AsRef<Path>) -> PathBuf {
         let from = self.resolve();
-        let to = to.resolve();
+        let to = to.as_ref().resolve();
         if from == to {
             PathBuf::new()
         } else {
@@ -206,14 +206,14 @@ impl PathSugar for Path {
             }
             let mut from_start = i;
             while from_start < from_components.len() {
-              ret.push("..");
-              from_start += 1;
+                ret.push("..");
+                from_start += 1;
             }
 
             let mut to_start = i;
             while to_start < to_components.len() {
-              ret.push(to_components[to_start]);
-              to_start += 1;
+                ret.push(to_components[to_start]);
+                to_start += 1;
             }
 
             ret
