@@ -155,7 +155,7 @@ impl PathSugar for Path {
     }
 
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf {
-        println!("start from: {:?}, to: {:?}", self, to.as_ref());
+        // println!("start from: {:?}, to: {:?}", self, to.as_ref());
         let from = self.resolve();
         let to = to.as_ref().resolve();
         if from == to {
@@ -191,7 +191,7 @@ impl PathSugar for Path {
             while i < longest_len {
                 let from_component = from_components.get(i);
                 let to_component = to_components.get(i);
-                println!("process from: {:?}, to: {:?}", from_component, to_component);
+                // println!("process from: {:?}, to: {:?}", from_component, to_component);
                 if cfg!(target_family = "windows") {
                     if let Some(Component::Normal(from_seg)) = from_component {
                         if let Some(Component::Normal(to_seg)) = to_component {
