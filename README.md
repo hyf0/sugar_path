@@ -2,6 +2,8 @@
 
 Sugar functions for manipulating paths.
 
+[examples](https://github.com/iheyunfei/sugar_path/tree/main/tests)
+
 ## For Node.js developers
 
 - basename()
@@ -19,7 +21,7 @@ Sugar functions for manipulating paths.
 - path.normalize()
   - SugarPath#normalize()
 - relative()
-  - wip
+  - SugarPath#relative()
 - resolve()
-  - wip
+  - SugarPath#resolve()
 
