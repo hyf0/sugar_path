@@ -40,6 +40,13 @@ pub trait PathSugar {
     /// If the path is not absolute, Using CWD concat the path, normalize and return it.
     fn resolve(&self) -> PathBuf;
 
+    ///
+    /// ```rust
+    /// use std::path::Path;
+    /// use sugar_path::PathSugar;
+    /// assert_eq!(Path::new("/var/lib").relative(Path::new("/var")), Path::new(".."));
+    /// assert_eq!(Path::new("/var/lib").relative(Path::new("/bin")), Path::new("../../bin"));
+    /// ````
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf;
 }
 
