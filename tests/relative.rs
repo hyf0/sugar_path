@@ -24,13 +24,13 @@ fn unix() {
         ("/baz", "/baz-quux", "../baz-quux"),
         ("/page1/page2/foo", "/", "../../.."),
     ];
-    cases.into_iter().for_each(|(from, to, right)| {
+    cases.into_iter().for_each(|(base, target, right)| {
         assert_eq!(
-            Path::new(from).relative(to),
+            Path::new(target).relative(base),
             Path::new(right),
-            "for input from: {} to: {}",
-            from,
-            to
+            "for input target: {} base: {}",
+            target,
+            base
         );
     });
 }
@@ -67,13 +67,13 @@ fn windows() {
         ("C:\\baz-quux", "C:\\baz", "..\\baz"),
         ("C:\\baz", "C:\\baz-quux", "..\\baz-quux"),
     ];
-    cases.into_iter().for_each(|(from, to, right)| {
+    cases.into_iter().for_each(|(base, target, right)| {
         assert_eq!(
-            Path::new(from).relative(Path::new(to)),
+            Path::new(target).relative(Path::new(base)),
             Path::new(right),
-            "for input from: {} to: {}",
-            from,
-            to
+            "for input target: {} base: {}",
+            target,
+            base
         );
     });
 }
@@ -92,13 +92,13 @@ fn windows_unc() {
         ),
         ("\\\\foo\\bar\\baz", "\\\\foo\\bar", ".."),
     ];
-    cases.into_iter().for_each(|(from, to, right)| {
+    cases.into_iter().for_each(|(base, target, right)| {
         assert_eq!(
-            Path::new(from).relative(Path::new(to)),
+            Path::new(target).relative(Path::new(base)),
             Path::new(right),
-            "for input from: {} to: {}",
-            from,
-            to
+            "for input target: {} base: {}",
+            target,
+            base
         );
     });
 }

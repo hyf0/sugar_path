@@ -2,7 +2,8 @@
 
 Sugar functions for manipulating paths.
 
-[examples](https://github.com/iheyunfei/sugar_path/tree/main/tests)
+- [examples](https://github.com/iheyunfei/sugar_path/tree/main/tests)
+- [docs](https://docs.rs/sugar_path/latest/sugar_path/)
 
 ## For Node.js developers
 
