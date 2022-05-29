@@ -44,8 +44,9 @@ pub trait PathSugar {
     /// ```rust
     /// use std::path::Path;
     /// use sugar_path::PathSugar;
-    /// assert_eq!(Path::new("/var/lib").relative(Path::new("/var")), Path::new(".."));
-    /// assert_eq!(Path::new("/var/lib").relative(Path::new("/bin")), Path::new("../../bin"));
+    /// assert_eq!(Path::new("/var").relative(Path::new("/var/lib")), Path::new(".."));
+    /// assert_eq!(Path::new("/bin").relative(Path::new("/var/lib")), Path::new("../../bin"));
+    /// assert_eq!(Path::new("/a/b/c/d").relative(Path::new("/a/b/f/g")), Path::new("../../c/d"));
     /// ````
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf;
 }
@@ -163,12 +164,12 @@ impl PathSugar for Path {
 
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf {
         // println!("start from: {:?}, to: {:?}", self, to.as_ref());
-        let from = self.resolve();
-        let to = to.as_ref().resolve();
-        if from == to {
+        let base = to.as_ref().resolve();
+        let target = self.resolve();
+        if base == target {
             PathBuf::new()
         } else {
-            let from_components = from
+            let base_components = base
                 .components()
                 .into_iter()
                 .filter(|com| {
@@ -178,7 +179,7 @@ impl PathSugar for Path {
                     )
                 })
                 .collect::<Vec<_>>();
-            let to_components = to
+            let target_components = target
                 .components()
                 .into_iter()
                 .filter(|com| {
@@ -189,15 +190,15 @@ impl PathSugar for Path {
                 })
                 .collect::<Vec<_>>();
             let mut ret = PathBuf::new();
-            let longest_len = if from_components.len() > to_components.len() {
-                from_components.len()
+            let longest_len = if base_components.len() > target_components.len() {
+                base_components.len()
             } else {
-                to_components.len()
+                target_components.len()
             };
             let mut i = 0;
             while i < longest_len {
-                let from_component = from_components.get(i);
-                let to_component = to_components.get(i);
+                let from_component = base_components.get(i);
+                let to_component = target_components.get(i);
                 // println!("process from: {:?}, to: {:?}", from_component, to_component);
                 if cfg!(target_family = "windows") {
                     if let Some(Component::Normal(from_seg)) = from_component {
@@ -215,14 +216,14 @@ impl PathSugar for Path {
                 i += 1;
             }
             let mut from_start = i;
-            while from_start < from_components.len() {
+            while from_start < base_components.len() {
                 ret.push("..");
                 from_start += 1;
             }
 
             let mut to_start = i;
-            while to_start < to_components.len() {
-                ret.push(to_components[to_start]);
+            while to_start < target_components.len() {
+                ret.push(target_components[to_start]);
                 to_start += 1;
             }
 
