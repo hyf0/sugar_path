@@ -10,7 +10,7 @@ pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
     cwd
 });
 
-pub trait PathSugar {
+pub trait SugarPath {
     /// normalizes the given path, resolving `'..'` and `'.'` segments.
     ///
     /// When multiple, sequential path segment separation characters are found (e.g. `/` on POSIX and either `\` or `/` on Windows), they are replaced by a single instance of the platform-specific path segment separator (`/` on POSIX and `\` on Windows). Trailing separators are preserved.
@@ -19,7 +19,7 @@ pub trait PathSugar {
     ///
     /// ```rust
     /// use std::path::Path;
-    /// use sugar_path::PathSugar;
+    /// use sugar_path::SugarPath;
     ///
     /// // For example, on POSIX:
     /// #[cfg(target_family = "unix")]
@@ -43,7 +43,7 @@ pub trait PathSugar {
     ///
     /// ```rust
     /// use std::path::Path;
-    /// use sugar_path::PathSugar;
+    /// use sugar_path::SugarPath;
     /// assert_eq!(Path::new("/var").relative(Path::new("/var/lib")), Path::new(".."));
     /// assert_eq!(Path::new("/bin").relative(Path::new("/var/lib")), Path::new("../../bin"));
     /// assert_eq!(Path::new("/a/b/c/d").relative(Path::new("/a/b/f/g")), Path::new("../../c/d"));
@@ -106,7 +106,7 @@ fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
         })
 }
 
-impl PathSugar for Path {
+impl SugarPath for Path {
     fn normalize(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
             // TODO: we may need to do it more delegated

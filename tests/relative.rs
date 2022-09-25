@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use sugar_path::PathSugar;
+use sugar_path::SugarPath;
 
 #[cfg(target_family = "unix")]
 #[test]
@@ -24,13 +24,13 @@ fn unix() {
         ("/baz", "/baz-quux", "../baz-quux"),
         ("/page1/page2/foo", "/", "../../.."),
     ];
-    cases.into_iter().for_each(|(base, target, right)| {
+    cases.into_iter().for_each(|(to, target, right)| {
         assert_eq!(
-            Path::new(target).relative(base),
+            Path::new(target).relative(to),
             Path::new(right),
             "for input target: {} base: {}",
             target,
-            base
+            to
         );
     });
 }

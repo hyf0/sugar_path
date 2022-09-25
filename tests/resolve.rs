@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use sugar_path::PathSugar;
+use sugar_path::SugarPath;
 
 fn get_cwd() -> PathBuf {
     std::env::current_dir().unwrap()

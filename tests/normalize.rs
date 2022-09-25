@@ -1,5 +1,5 @@
 use std::path::Path;
-use sugar_path::PathSugar;
+use sugar_path::SugarPath;
 
 #[cfg(target_family = "unix")]
 #[test]
