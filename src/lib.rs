@@ -44,9 +44,9 @@ pub trait SugarPath {
     /// ```rust
     /// use std::path::Path;
     /// use sugar_path::SugarPath;
-    /// assert_eq!(Path::new("/var").relative(Path::new("/var/lib")), Path::new(".."));
-    /// assert_eq!(Path::new("/bin").relative(Path::new("/var/lib")), Path::new("../../bin"));
-    /// assert_eq!(Path::new("/a/b/c/d").relative(Path::new("/a/b/f/g")), Path::new("../../c/d"));
+    /// assert_eq!(Path::new("/var").relative("/var/lib"), Path::new(".."));
+    /// assert_eq!(Path::new("/bin").relative("/var/lib"), Path::new("../../bin"));
+    /// assert_eq!(Path::new("/a/b/c/d").relative("/a/b/f/g"), Path::new("../../c/d"));
     /// ````
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf;
 }
