@@ -1,11 +1,11 @@
 use std::{
-    fmt::format,
-    path::{Component, Path, PathBuf, Prefix},
+    path::{Component, Path, PathBuf},
 };
 
 use once_cell::sync::Lazy;
 
 pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
+    // TODO: better way to get the current working directory?
     let cwd = std::env::current_dir().unwrap();
     cwd
 });
@@ -44,10 +44,19 @@ pub trait SugarPath {
     /// ```rust
     /// use std::path::Path;
     /// use sugar_path::SugarPath;
-    /// assert_eq!(Path::new("/var").relative("/var/lib"), Path::new(".."));
-    /// assert_eq!(Path::new("/bin").relative("/var/lib"), Path::new("../../bin"));
-    /// assert_eq!(Path::new("/a/b/c/d").relative("/a/b/f/g"), Path::new("../../c/d"));
-    /// ````
+    /// assert_eq!(
+    ///   Path::new("/var").relative("/var/lib"),
+    ///   Path::new("..")
+    /// );
+    /// assert_eq!(
+    ///   Path::new("/bin").relative("/var/lib"),
+    ///   Path::new("../../bin")
+    /// );
+    /// assert_eq!(
+    ///   Path::new("/a/b/c/d").relative("/a/b/f/g"),
+    ///   Path::new("../../c/d")
+    /// );
+    /// ```
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf;
 }
 
