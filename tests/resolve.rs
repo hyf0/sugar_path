@@ -10,6 +10,7 @@ fn get_cwd() -> PathBuf {
 macro_rules! path_buf {
     ( $( $x:expr ),* ) => {
       {
+        #[allow(unused_mut)]
         let mut path_buf = std::path::PathBuf::new();
         $(
           path_buf.push($x);
