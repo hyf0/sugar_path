@@ -73,11 +73,10 @@ pub trait SugarPath {
 #[inline]
 fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
     let mut components = path.components().peekable();
-    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+    let mut ret = Vec::with_capacity(components.size_hint().0);
+    if let Some(c @ Component::Prefix(..)) = components.peek() {
+        ret.push(c.clone());
         components.next();
-        vec![c]
-    } else {
-        vec![]
     };
 
     for component in components {
@@ -88,22 +87,22 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             }
             Component::CurDir => {}
             c @ Component::ParentDir => {
-                let is_last_none = matches!(ret.last(), None | Some(Component::Prefix(_)));
-                if is_last_none {
+                // For a non-absolute path `../../` or `c:../../`, we should preserve `..`
+                let is_last_none_or_prefix = matches!(ret.last(), None | Some(Component::Prefix(_)));
+                if is_last_none_or_prefix {
                     ret.push(c);
                 } else {
-                    let is_last_root = matches!(ret.last().unwrap(), Component::RootDir);
-                    if is_last_root {
-                        // do nothing
-                    } else {
+                    let is_last_root_dir = matches!(ret.last(), Some(Component::RootDir));
+                    if !is_last_root_dir {
                         let is_last_parent_dir =
-                            matches!(ret.last().unwrap(), Component::ParentDir);
+                            matches!(ret.last(), Some(Component::ParentDir));
                         if is_last_parent_dir {
                             ret.push(c);
                         } else {
                             ret.pop();
                         }
                     }
+
                 }
             }
             c @ Component::Normal(_) => {

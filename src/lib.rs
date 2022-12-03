@@ -11,4 +11,4 @@
 mod as_path;
 pub use as_path::*;
 mod sugar_path;
-pub use sugar_path::*;
+pub use crate::sugar_path::*;
