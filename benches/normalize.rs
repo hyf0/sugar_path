@@ -75,7 +75,7 @@ fn normalize() {
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("normalize", |b| b.iter(|| normalize()));
+    c.bench_function("normalize", |b| b.iter(normalize));
 }
 
 criterion_group!(benches, criterion_benchmark);
