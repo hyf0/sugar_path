@@ -7,8 +7,8 @@ use once_cell::sync::Lazy;
 
 pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
     // TODO: better way to get the current working directory?
-    let cwd = std::env::current_dir().unwrap();
-    cwd
+    
+    std::env::current_dir().unwrap()
 });
 
 pub trait SugarPath {
@@ -75,7 +75,7 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
     let mut components = path.components().peekable();
     let mut ret = Vec::with_capacity(components.size_hint().0);
     if let Some(c @ Component::Prefix(..)) = components.peek() {
-        ret.push(c.clone());
+        ret.push(*c);
         components.next();
     };
 
@@ -117,18 +117,14 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
 fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
     components
         .into_iter()
-        .map(|c| c.as_os_str())
-        .fold(PathBuf::new(), |mut acc, cur| {
-            acc.push(cur);
-            acc
-        })
+        .collect()
 }
 
 impl SugarPath for Path {
     fn normalize(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
             // TODO: we may need to do it more delegated
-            let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
+            let path = PathBuf::from(self.to_string_lossy().to_string().replace('/', "\\"));
             let mut components = normalize_to_component_vec(&path);
             if components.is_empty()
                 || (components.len() == 1 && matches!(components[0], Component::Prefix(_)))
@@ -138,7 +134,7 @@ impl SugarPath for Path {
             component_vec_to_path_buf(components)
         } else {
             let mut components = normalize_to_component_vec(self);
-            if components.len() == 0 {
+            if components.is_empty() {
                 components.push(Component::CurDir)
             }
             component_vec_to_path_buf(components)
@@ -146,7 +142,7 @@ impl SugarPath for Path {
     }
     fn resolve(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
-            let path = PathBuf::from(self.to_string_lossy().to_string().replace("/", "\\"));
+            let path = PathBuf::from(self.to_string_lossy().to_string().replace('/', "\\"));
             // Consider c:
             if path.is_absolute() {
                 path.normalize()
@@ -169,14 +165,12 @@ impl SugarPath for Path {
                     cwd.normalize()
                 }
             }
+        } else if self.is_absolute() {
+            self.normalize()
         } else {
-            if self.is_absolute() {
-                self.normalize()
-            } else {
-                let mut cwd = CWD.clone();
-                cwd.push(self);
-                cwd.normalize()
-            }
+            let mut cwd = CWD.clone();
+            cwd.push(self);
+            cwd.normalize()
         }
     }
 
