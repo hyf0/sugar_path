@@ -117,11 +117,7 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
 fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
     components
         .into_iter()
-        .map(|c| c.as_os_str())
-        .fold(PathBuf::new(), |mut acc, cur| {
-            acc.push(cur);
-            acc
-        })
+        .collect()
 }
 
 impl SugarPath for Path {
