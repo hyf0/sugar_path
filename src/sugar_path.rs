@@ -1,5 +1,5 @@
-
 use std::{
+    borrow::Cow,
     path::{Component, Path, PathBuf},
 };
 
@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 
 pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
     // TODO: better way to get the current working directory?
-    
+
     std::env::current_dir().unwrap()
 });
 
@@ -88,21 +88,20 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
             Component::CurDir => {}
             c @ Component::ParentDir => {
                 // For a non-absolute path `../../` or `c:../../`, we should preserve `..`
-                let is_last_none_or_prefix = matches!(ret.last(), None | Some(Component::Prefix(_)));
+                let is_last_none_or_prefix =
+                    matches!(ret.last(), None | Some(Component::Prefix(_)));
                 if is_last_none_or_prefix {
                     ret.push(c);
                 } else {
                     let is_last_root_dir = matches!(ret.last(), Some(Component::RootDir));
                     if !is_last_root_dir {
-                        let is_last_parent_dir =
-                            matches!(ret.last(), Some(Component::ParentDir));
+                        let is_last_parent_dir = matches!(ret.last(), Some(Component::ParentDir));
                         if is_last_parent_dir {
                             ret.push(c);
                         } else {
                             ret.pop();
                         }
                     }
-
                 }
             }
             c @ Component::Normal(_) => {
@@ -115,30 +114,31 @@ fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
 
 #[inline]
 fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
-    components
-        .into_iter()
-        .collect()
+    components.into_iter().collect()
 }
 
 impl SugarPath for Path {
     fn normalize(&self) -> PathBuf {
-        if cfg!(target_family = "windows") {
-            // TODO: we may need to do it more delegated
-            let path = PathBuf::from(self.to_string_lossy().to_string().replace('/', "\\"));
-            let mut components = normalize_to_component_vec(&path);
-            if components.is_empty()
-                || (components.len() == 1 && matches!(components[0], Component::Prefix(_)))
-            {
-                components.push(Component::CurDir)
-            }
-            component_vec_to_path_buf(components)
+        let path = if cfg!(target_family = "windows") {
+            Cow::Owned(PathBuf::from(
+                self.to_string_lossy().to_string().replace('/', "\\"),
+            ))
         } else {
-            let mut components = normalize_to_component_vec(self);
-            if components.is_empty() {
+            Cow::Borrowed(self)
+        };
+        let mut components = normalize_to_component_vec(&path);
+
+        if components.is_empty() {
+            components.push(Component::CurDir)
+        }
+
+        if cfg!(target_family = "windows") {
+            if components.len() == 1 && matches!(components[0], Component::Prefix(_)) {
                 components.push(Component::CurDir)
             }
-            component_vec_to_path_buf(components)
         }
+
+        component_vec_to_path_buf(components)
     }
     fn resolve(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
