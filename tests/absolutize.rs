@@ -48,29 +48,29 @@ fn unix() {
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {
-    assert_eq!(path_buf!(".").resolve(), get_cwd());
-    assert_eq!(path_buf!("").resolve(), get_cwd());
-    assert_eq!(path_buf!("c:../a").resolve(), path_buf!("c://a"));
-    assert_eq!(path_buf!("c:./a").resolve(), path_buf!("c://a"));
-    assert_eq!(path_buf!("a").resolve(), get_cwd().join("a"));
+    assert_eq!(path_buf!(".").absolutize(), get_cwd());
+    assert_eq!(path_buf!("").absolutize(), get_cwd());
+    assert_eq!(path_buf!("c:../a").absolutize(), path_buf!("c://a"));
+    assert_eq!(path_buf!("c:./a").absolutize(), path_buf!("c://a"));
+    assert_eq!(path_buf!("a").absolutize(), get_cwd().join("a"));
 
-    assert_eq!(path_buf!("c:/ignore").resolve(), path_buf!("c:\\ignore"));
+    assert_eq!(path_buf!("c:/ignore").absolutize(), path_buf!("c:\\ignore"));
     assert_eq!(
-        path_buf!("c:\\some\\file").resolve(),
+        path_buf!("c:\\some\\file").absolutize(),
         path_buf!("c:\\some\\file")
     );
     assert_eq!(
-        path_buf!("some/dir//").resolve(),
+        path_buf!("some/dir//").absolutize(),
         get_cwd().join("some").join("dir")
     );
     assert_eq!(
-        path_buf!("//server/share", "..", "relative\\").resolve(),
+        path_buf!("//server/share", "..", "relative\\").absolutize(),
         get_cwd().join(path_buf!("\\\\server\\share\\relative"))
     );
     {
         let mut right = get_cwd();
         right.pop();
         right = right.join(path_buf!("tmp.3\\cycles\\root.js"));
-        assert_eq!(path_buf!("..\\tmp.3\\cycles\\root.js").resolve(), right);
+        assert_eq!(path_buf!("..\\tmp.3\\cycles\\root.js").absolutize(), right);
     }
 }

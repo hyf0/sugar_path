@@ -29,5 +29,5 @@ Sugar functions for manipulating paths.
 - relative()
   - SugarPath#relative()
 - resolve()
-  - SugarPath#resolve()
+  - SugarPath#absolutize()
 
