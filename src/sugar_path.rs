@@ -48,7 +48,7 @@ pub trait SugarPath {
     /// If the path is absolute, normalize and return it.
     ///
     /// If the path is not absolute, Using CWD concat the path, normalize and return it.
-    fn resolve(&self) -> PathBuf;
+    fn absolutize(&self) -> PathBuf;
 
     ///
     /// ```rust
@@ -140,7 +140,7 @@ impl SugarPath for Path {
 
         component_vec_to_path_buf(components)
     }
-    fn resolve(&self) -> PathBuf {
+    fn absolutize(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
             let path = PathBuf::from(self.to_string_lossy().to_string().replace('/', "\\"));
             // Consider c:
@@ -175,9 +175,8 @@ impl SugarPath for Path {
     }
 
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf {
-        // println!("start from: {:?}, to: {:?}", self, to.as_ref());
-        let base = to.as_ref().resolve();
-        let target = self.resolve();
+        let base = to.as_ref().absolutize();
+        let target = self.absolutize();
         if base == target {
             PathBuf::new()
         } else {

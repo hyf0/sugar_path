@@ -23,26 +23,26 @@ macro_rules! path_buf {
 #[test]
 fn unix() {
     assert_eq!(
-        path_buf!("/var/lib", "../", "file/").resolve(),
+        path_buf!("/var/lib", "../", "file/").absolutize(),
         path_buf!("/var/file")
     );
-    assert_eq!(path_buf!("a/b/c/", "../../..").resolve(), get_cwd());
-    assert_eq!(path_buf!(".").resolve(), get_cwd());
-    assert_eq!(path_buf!().resolve(), get_cwd());
-    assert_eq!(path_buf!("a").resolve(), get_cwd().join("a"));
+    assert_eq!(path_buf!("a/b/c/", "../../..").absolutize(), get_cwd());
+    assert_eq!(path_buf!(".").absolutize(), get_cwd());
+    assert_eq!(path_buf!().absolutize(), get_cwd());
+    assert_eq!(path_buf!("a").absolutize(), get_cwd().join("a"));
     assert_eq!(
-        path_buf!("/some/dir", ".", "/absolute/").resolve(),
+        path_buf!("/some/dir", ".", "/absolute/").absolutize(),
         path_buf!("/absolute")
     );
     assert_eq!(
-        path_buf!("/foo/tmp.3/", "../tmp.3/cycles/root.js").resolve(),
+        path_buf!("/foo/tmp.3/", "../tmp.3/cycles/root.js").absolutize(),
         path_buf!("/foo/tmp.3/cycles/root.js")
     );
     assert_eq!(
-        path_buf!("/var/lib", "/../", "file/").resolve(),
+        path_buf!("/var/lib", "/../", "file/").absolutize(),
         path_buf!("/file")
     );
-    assert_eq!(path_buf!().resolve(), get_cwd());
+    assert_eq!(path_buf!().absolutize(), get_cwd());
 }
 
 #[cfg(target_family = "windows")]
