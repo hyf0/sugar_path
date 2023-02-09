@@ -5,6 +5,11 @@ use std::{
 
 use once_cell::sync::Lazy;
 
+use crate::{
+    utils::{component_vec_to_path_buf, normalize_to_component_vec},
+    SugarPathBuf,
+};
+
 pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
     // TODO: better way to get the current working directory?
 
@@ -43,7 +48,7 @@ pub trait SugarPath {
     ///   Path::new("C:\\temp\\foo\\bar")
     /// );
     /// ```
-    fn normalize(&self) -> PathBuf;
+    fn normalize(&self) -> Cow<Path>;
 
     /// If the path is absolute, normalize and return it.
     ///
@@ -70,82 +75,37 @@ pub trait SugarPath {
     fn relative(&self, to: impl AsRef<Path>) -> PathBuf;
 }
 
-#[inline]
-fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
-    let mut components = path.components().peekable();
-    let mut ret = Vec::with_capacity(components.size_hint().0);
-    if let Some(c @ Component::Prefix(..)) = components.peek() {
-        ret.push(*c);
-        components.next();
-    };
+impl SugarPath for Path {
+    fn normalize(&self) -> Cow<Path> {
+        if self.as_os_str().is_empty() {
+            return Cow::Borrowed(Path::new("."));
+        }
 
-    for component in components {
-        match component {
-            Component::Prefix(..) => unreachable!(),
-            Component::RootDir => {
-                ret.push(component);
+        let components = normalize_to_component_vec(self);
+        if let Some(mut components) = components {
+
+            if components.is_empty() {
+                return Cow::Borrowed(Path::new("."));
             }
-            Component::CurDir => {}
-            c @ Component::ParentDir => {
-                // For a non-absolute path `../../` or `c:../../`, we should preserve `..`
-                let is_last_none_or_prefix =
-                    matches!(ret.last(), None | Some(Component::Prefix(_)));
-                if is_last_none_or_prefix {
-                    ret.push(c);
-                } else {
-                    let is_last_root_dir = matches!(ret.last(), Some(Component::RootDir));
-                    if !is_last_root_dir {
-                        let is_last_parent_dir = matches!(ret.last(), Some(Component::ParentDir));
-                        if is_last_parent_dir {
-                            ret.push(c);
-                        } else {
-                            ret.pop();
-                        }
-                    }
+
+            if cfg!(target_family = "windows") {
+                if components.len() == 1 && matches!(components[0], Component::Prefix(_)) {
+                    components.push(Component::CurDir)
                 }
             }
-            c @ Component::Normal(_) => {
-                ret.push(c);
-            }
-        }
-    }
-    ret
-}
 
-#[inline]
-fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
-    components.into_iter().collect()
-}
-
-impl SugarPath for Path {
-    fn normalize(&self) -> PathBuf {
-        let path = if cfg!(target_family = "windows") {
-            Cow::Owned(PathBuf::from(
-                self.to_string_lossy().to_string().replace('/', "\\"),
-            ))
+            component_vec_to_path_buf(components).into()
         } else {
             Cow::Borrowed(self)
-        };
-        let mut components = normalize_to_component_vec(&path);
-
-        if components.is_empty() {
-            components.push(Component::CurDir)
         }
-
-        if cfg!(target_family = "windows") {
-            if components.len() == 1 && matches!(components[0], Component::Prefix(_)) {
-                components.push(Component::CurDir)
-            }
-        }
-
-        component_vec_to_path_buf(components)
     }
+
     fn absolutize(&self) -> PathBuf {
         if cfg!(target_family = "windows") {
             let path = PathBuf::from(self.to_string_lossy().to_string().replace('/', "\\"));
             // Consider c:
             if path.is_absolute() {
-                path.normalize()
+                path.normalize().into_owned()
             } else {
                 let mut components = path.components();
                 if matches!(components.next(), Some(Component::Prefix(_)))
@@ -158,19 +118,21 @@ impl SugarPath for Path {
                     // a UNC path at this points, because UNC paths are always absolute.
                     let mut components = path.components().into_iter().collect::<Vec<_>>();
                     components.insert(1, Component::RootDir);
-                    component_vec_to_path_buf(components).normalize()
+                    component_vec_to_path_buf(components)
+                        .normalize()
+                        .into_owned()
                 } else {
                     let mut cwd = CWD.clone();
                     cwd.push(path);
-                    cwd.normalize()
+                    cwd.normalize().into_owned()
                 }
             }
         } else if self.is_absolute() {
-            self.normalize()
+            self.normalize().into_owned()
         } else {
             let mut cwd = CWD.clone();
             cwd.push(self);
-            cwd.normalize()
+            cwd.normalize().into_owned()
         }
     }
 

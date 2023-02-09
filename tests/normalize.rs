@@ -74,6 +74,81 @@ fn unix() {
     assert_eq!(Path::new("").normalize(), Path::new("."));
 }
 
+#[cfg(target_family = "unix")]
+#[test]
+fn unix_into() {
+    use sugar_path::SugarPathBuf;
+
+    assert_eq!(
+        Path::new("/foo/../../../bar").to_path_buf().into_normalize().as_path(),
+        Path::new("/bar")
+    );
+    assert_eq!(Path::new("a//b//../b").to_path_buf().into_normalize().as_path(), Path::new("a/b"));
+    assert_eq!(
+        Path::new("/foo/../../../bar").to_path_buf().into_normalize().as_path(),
+        Path::new("/bar")
+    );
+    assert_eq!(Path::new("a//b//./c").to_path_buf().into_normalize().as_path(), Path::new("a/b/c"));
+    assert_eq!(Path::new("a//b//.").to_path_buf().into_normalize().as_path(), Path::new("a/b"));
+    assert_eq!(
+        Path::new("/a/b/c/../../../x/y/z").to_path_buf().into_normalize().as_path(),
+        Path::new("/x/y/z")
+    );
+    assert_eq!(
+        Path::new("///..//./foo/.//bar").to_path_buf().into_normalize().as_path(),
+        Path::new("/foo/bar")
+    );
+    assert_eq!(Path::new("bar/foo../../").to_path_buf().into_normalize().as_path(), Path::new("bar/"));
+    assert_eq!(Path::new("bar/foo../..").to_path_buf().into_normalize().as_path(), Path::new("bar"));
+    assert_eq!(
+        Path::new("bar/foo../../baz").to_path_buf().into_normalize().as_path(),
+        Path::new("bar/baz")
+    );
+    assert_eq!(Path::new("bar/foo../").to_path_buf().into_normalize().as_path(), Path::new("bar/foo../"));
+    assert_eq!(Path::new("bar/foo..").to_path_buf().into_normalize().as_path(), Path::new("bar/foo.."));
+    assert_eq!(
+        Path::new("../foo../../../bar").to_path_buf().into_normalize().as_path(),
+        Path::new("../../bar")
+    );
+    assert_eq!(
+        Path::new("../foo../../../bar").to_path_buf().into_normalize().as_path(),
+        Path::new("../../bar")
+    );
+    assert_eq!(
+        Path::new("../.../.././.../../../bar").to_path_buf().into_normalize().as_path(),
+        Path::new("../../bar")
+    );
+    assert_eq!(
+        Path::new("../.../.././.../../../bar").to_path_buf().into_normalize().as_path(),
+        Path::new("../../bar")
+    );
+    assert_eq!(
+        Path::new("../../../foo/../../../bar").to_path_buf().into_normalize().as_path(),
+        Path::new("../../../../../bar")
+    );
+    assert_eq!(
+        Path::new("../../../foo/../../../bar/../../").to_path_buf().into_normalize().as_path(),
+        Path::new("../../../../../../")
+    );
+    assert_eq!(
+        Path::new("../foobar/barfoo/foo/../../../bar/../../").to_path_buf().into_normalize().as_path(),
+        Path::new("../../")
+    );
+    assert_eq!(
+        Path::new("../.../../foobar/../../../bar/../../baz").to_path_buf().into_normalize().as_path(),
+        Path::new("../../../../baz")
+    );
+    assert_eq!(
+        Path::new("foo/bar\\baz").to_path_buf().into_normalize().as_path(),
+        Path::new("foo/bar\\baz")
+    );
+    assert_eq!(Path::new("/a/b/c/../../../").to_path_buf().into_normalize().as_path(), Path::new("/"));
+    assert_eq!(Path::new("a/b/c/../../../").to_path_buf().into_normalize().as_path(), Path::new("."));
+    assert_eq!(Path::new("a/b/c/../../..").to_path_buf().into_normalize().as_path(), Path::new("."));
+
+    assert_eq!(Path::new("").to_path_buf().into_normalize().as_path(), Path::new("."));
+}
+
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {
