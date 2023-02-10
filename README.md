@@ -12,22 +12,10 @@ Sugar functions for manipulating paths.
 
 ## For Node.js developers
 
-- basename()
-  - Path#file_name()
-  - Path#file_prefix()
-  - Path#file_stem()
-- dirname()
-  - Path#parent()
-- extname()
-  - Path#extension()
-- format()
-  - wip
-- isAbsolute()
-  - Path#is_absolute()
 - path.normalize()
-  - SugarPath#normalize()
+  - [SugarPath#normalize()](https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.normalize)
 - relative()
-  - SugarPath#relative()
+  - [SugarPath#relative()](https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.relative)
 - resolve()
-  - SugarPath#resolve()
+  - SugarPath#absolutize()
 
