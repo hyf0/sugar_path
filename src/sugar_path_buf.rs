@@ -7,11 +7,14 @@ pub trait SugarPathBuf {
 }
 
 impl SugarPathBuf for PathBuf {
+    /// normalizes the given path, resolving `'..'` and `'.'` segments.
+    ///
+    /// When multiple, sequential path segment separation characters are found (e.g. `/` on POSIX and either `\` or `/` on Windows), they are replaced by a single instance of the platform-specific path segment separator (`/` on POSIX and `\` on Windows). Trailing separators are preserved.
+    ///
+    /// If the path is a zero-length string, `'.'` is returned, representing the current working directory.
+    /// 
+    /// If there's no normalization to be done, this function will return the original `PathBuf`.
     fn into_normalize(self) -> PathBuf {
-        if self.as_os_str().is_empty() {
-            return PathBuf::from(".");
-        }
-
         let components = normalize_to_component_vec(&self);
 
         if let Some(mut components) = components {

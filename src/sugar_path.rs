@@ -23,6 +23,8 @@ pub trait SugarPath {
     ///
     /// If the path is a zero-length string, `'.'` is returned, representing the current working directory.
     ///
+    /// If there's no normalization to be done, this function will return the original `Path`.
+    ///
     /// ```rust
     /// use std::path::Path;
     /// use sugar_path::SugarPath;
@@ -53,7 +55,7 @@ pub trait SugarPath {
     /// If the path is absolute, normalize and return it.
     ///
     /// If the path is not absolute, Using CWD concat the path, normalize and return it.
-    fn absolutize(&self) -> PathBuf;
+    fn absolutize(&self) -> Cow<Path>;
 
     ///
     /// ```rust
@@ -77,13 +79,8 @@ pub trait SugarPath {
 
 impl SugarPath for Path {
     fn normalize(&self) -> Cow<Path> {
-        if self.as_os_str().is_empty() {
-            return Cow::Borrowed(Path::new("."));
-        }
-
         let components = normalize_to_component_vec(self);
         if let Some(mut components) = components {
-
             if components.is_empty() {
                 return Cow::Borrowed(Path::new("."));
             }
@@ -100,39 +97,34 @@ impl SugarPath for Path {
         }
     }
 
-    fn absolutize(&self) -> PathBuf {
-        if cfg!(target_family = "windows") {
-            let path = PathBuf::from(self.to_string_lossy().to_string().replace('/', "\\"));
+    fn absolutize(&self) -> Cow<Path> {
+        if self.is_absolute() {
+            self.normalize()
+        } else if cfg!(target_family = "windows") {
             // Consider c:
-            if path.is_absolute() {
-                path.normalize().into_owned()
+            let mut components = self.components();
+            if matches!(components.next(), Some(Component::Prefix(_)))
+                && !matches!(components.next(), Some(Component::RootDir))
+            {
+                // TODO: Windows has the concept of drive-specific current working
+                // directories. If we've resolved a drive letter but not yet an
+                // absolute path, get cwd for that drive, or the process cwd if
+                // the drive cwd is not available. We're sure the device is not
+                // a UNC path at this points, because UNC paths are always absolute.
+                let mut components = self.components().into_iter().collect::<Vec<_>>();
+                components.insert(1, Component::RootDir);
+                component_vec_to_path_buf(components)
+                    .into_normalize()
+                    .into()
             } else {
-                let mut components = path.components();
-                if matches!(components.next(), Some(Component::Prefix(_)))
-                    && !matches!(components.next(), Some(Component::RootDir))
-                {
-                    // TODO: Windows has the concept of drive-specific current working
-                    // directories. If we've resolved a drive letter but not yet an
-                    // absolute path, get cwd for that drive, or the process cwd if
-                    // the drive cwd is not available. We're sure the device is not
-                    // a UNC path at this points, because UNC paths are always absolute.
-                    let mut components = path.components().into_iter().collect::<Vec<_>>();
-                    components.insert(1, Component::RootDir);
-                    component_vec_to_path_buf(components)
-                        .normalize()
-                        .into_owned()
-                } else {
-                    let mut cwd = CWD.clone();
-                    cwd.push(path);
-                    cwd.normalize().into_owned()
-                }
+                let mut cwd = CWD.clone();
+                cwd.push(self);
+                cwd.into_normalize().into()
             }
-        } else if self.is_absolute() {
-            self.normalize().into_owned()
         } else {
             let mut cwd = CWD.clone();
             cwd.push(self);
-            cwd.normalize().into_owned()
+            cwd.into_normalize().into()
         }
     }
 
