@@ -36,7 +36,7 @@ impl SugarPathBuf for PathBuf {
         }
     }
 
-    /// If there's no absolutize to be done, this function will return the original `PathBuf`.
+    /// If there's no absolutization to be done, this function will return the original `PathBuf`.
     fn into_absolutize(self) -> PathBuf {
         if self.is_absolute() {
             self.into_normalize()
