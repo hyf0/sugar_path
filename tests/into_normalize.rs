@@ -1,9 +1,9 @@
 use std::path::Path;
+use sugar_path::SugarPathBuf;
 
 #[cfg(target_family = "unix")]
 #[test]
 fn unix() {
-    use sugar_path::SugarPathBuf;
 
     assert_eq!(
         Path::new("/foo/../../../bar")
