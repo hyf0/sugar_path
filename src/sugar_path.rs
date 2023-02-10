@@ -3,18 +3,10 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use once_cell::sync::Lazy;
-
 use crate::{
-    utils::{component_vec_to_path_buf, normalize_to_component_vec},
+    utils::{component_vec_to_path_buf, normalize_to_component_vec, CWD},
     SugarPathBuf,
 };
-
-pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
-    // TODO: better way to get the current working directory?
-
-    std::env::current_dir().unwrap()
-});
 
 pub trait SugarPath {
     /// normalizes the given path, resolving `'..'` and `'.'` segments.

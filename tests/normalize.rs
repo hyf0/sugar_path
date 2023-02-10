@@ -1,243 +1,105 @@
-use std::path::Path;
 use sugar_path::SugarPath;
+mod test_utils;
 
 #[cfg(target_family = "unix")]
 #[test]
 fn unix() {
+    assert_eq!(p!("/foo/../../../bar").normalize(), p!("/bar"));
+    assert_eq!(p!("a//b//../b").normalize(), p!("a/b"));
+    assert_eq!(p!("/foo/../../../bar").normalize(), p!("/bar"));
+    assert_eq!(p!("a//b//./c").normalize(), p!("a/b/c"));
+    assert_eq!(p!("a//b//.").normalize(), p!("a/b"));
+    assert_eq!(p!("/a/b/c/../../../x/y/z").normalize(), p!("/x/y/z"));
+    assert_eq!(p!("///..//./foo/.//bar").normalize(), p!("/foo/bar"));
+    assert_eq!(p!("bar/foo../../").normalize(), p!("bar/"));
+    assert_eq!(p!("bar/foo../..").normalize(), p!("bar"));
+    assert_eq!(p!("bar/foo../../baz").normalize(), p!("bar/baz"));
+    assert_eq!(p!("bar/foo../").normalize(), p!("bar/foo../"));
+    assert_eq!(p!("bar/foo..").normalize(), p!("bar/foo.."));
+    assert_eq!(p!("../foo../../../bar").normalize(), p!("../../bar"));
+    assert_eq!(p!("../foo../../../bar").normalize(), p!("../../bar"));
+    assert_eq!(p!("../.../.././.../../../bar").normalize(), p!("../../bar"));
+    assert_eq!(p!("../.../.././.../../../bar").normalize(), p!("../../bar"));
     assert_eq!(
-        Path::new("/foo/../../../bar").normalize(),
-        Path::new("/bar")
-    );
-    assert_eq!(Path::new("a//b//../b").normalize(), Path::new("a/b"));
-    assert_eq!(
-        Path::new("/foo/../../../bar").normalize(),
-        Path::new("/bar")
-    );
-    assert_eq!(Path::new("a//b//./c").normalize(), Path::new("a/b/c"));
-    assert_eq!(Path::new("a//b//.").normalize(), Path::new("a/b"));
-    assert_eq!(
-        Path::new("/a/b/c/../../../x/y/z").normalize(),
-        Path::new("/x/y/z")
-    );
-    assert_eq!(
-        Path::new("///..//./foo/.//bar").normalize(),
-        Path::new("/foo/bar")
-    );
-    assert_eq!(Path::new("bar/foo../../").normalize(), Path::new("bar/"));
-    assert_eq!(Path::new("bar/foo../..").normalize(), Path::new("bar"));
-    assert_eq!(
-        Path::new("bar/foo../../baz").normalize(),
-        Path::new("bar/baz")
-    );
-    assert_eq!(Path::new("bar/foo../").normalize(), Path::new("bar/foo../"));
-    assert_eq!(Path::new("bar/foo..").normalize(), Path::new("bar/foo.."));
-    assert_eq!(
-        Path::new("../foo../../../bar").normalize(),
-        Path::new("../../bar")
+        p!("../../../foo/../../../bar").normalize(),
+        p!("../../../../../bar")
     );
     assert_eq!(
-        Path::new("../foo../../../bar").normalize(),
-        Path::new("../../bar")
+        p!("../../../foo/../../../bar/../../").normalize(),
+        p!("../../../../../../")
     );
     assert_eq!(
-        Path::new("../.../.././.../../../bar").normalize(),
-        Path::new("../../bar")
+        p!("../foobar/barfoo/foo/../../../bar/../../").normalize(),
+        p!("../../")
     );
     assert_eq!(
-        Path::new("../.../.././.../../../bar").normalize(),
-        Path::new("../../bar")
+        p!("../.../../foobar/../../../bar/../../baz").normalize(),
+        p!("../../../../baz")
     );
-    assert_eq!(
-        Path::new("../../../foo/../../../bar").normalize(),
-        Path::new("../../../../../bar")
-    );
-    assert_eq!(
-        Path::new("../../../foo/../../../bar/../../").normalize(),
-        Path::new("../../../../../../")
-    );
-    assert_eq!(
-        Path::new("../foobar/barfoo/foo/../../../bar/../../").normalize(),
-        Path::new("../../")
-    );
-    assert_eq!(
-        Path::new("../.../../foobar/../../../bar/../../baz").normalize(),
-        Path::new("../../../../baz")
-    );
-    assert_eq!(
-        Path::new("foo/bar\\baz").normalize(),
-        Path::new("foo/bar\\baz")
-    );
-    assert_eq!(Path::new("/a/b/c/../../../").normalize(), Path::new("/"));
-    assert_eq!(Path::new("a/b/c/../../../").normalize(), Path::new("."));
-    assert_eq!(Path::new("a/b/c/../../..").normalize(), Path::new("."));
+    assert_eq!(p!("foo/bar\\baz").normalize(), p!("foo/bar\\baz"));
+    assert_eq!(p!("/a/b/c/../../../").normalize(), p!("/"));
+    assert_eq!(p!("a/b/c/../../../").normalize(), p!("."));
+    assert_eq!(p!("a/b/c/../../..").normalize(), p!("."));
 
-    assert_eq!(Path::new("").normalize(), Path::new("."));
-}
-
-#[cfg(target_family = "unix")]
-#[test]
-fn unix_into() {
-    use sugar_path::SugarPathBuf;
-
-    assert_eq!(
-        Path::new("/foo/../../../bar").to_path_buf().into_normalize().as_path(),
-        Path::new("/bar")
-    );
-    assert_eq!(Path::new("a//b//../b").to_path_buf().into_normalize().as_path(), Path::new("a/b"));
-    assert_eq!(
-        Path::new("/foo/../../../bar").to_path_buf().into_normalize().as_path(),
-        Path::new("/bar")
-    );
-    assert_eq!(Path::new("a//b//./c").to_path_buf().into_normalize().as_path(), Path::new("a/b/c"));
-    assert_eq!(Path::new("a//b//.").to_path_buf().into_normalize().as_path(), Path::new("a/b"));
-    assert_eq!(
-        Path::new("/a/b/c/../../../x/y/z").to_path_buf().into_normalize().as_path(),
-        Path::new("/x/y/z")
-    );
-    assert_eq!(
-        Path::new("///..//./foo/.//bar").to_path_buf().into_normalize().as_path(),
-        Path::new("/foo/bar")
-    );
-    assert_eq!(Path::new("bar/foo../../").to_path_buf().into_normalize().as_path(), Path::new("bar/"));
-    assert_eq!(Path::new("bar/foo../..").to_path_buf().into_normalize().as_path(), Path::new("bar"));
-    assert_eq!(
-        Path::new("bar/foo../../baz").to_path_buf().into_normalize().as_path(),
-        Path::new("bar/baz")
-    );
-    assert_eq!(Path::new("bar/foo../").to_path_buf().into_normalize().as_path(), Path::new("bar/foo../"));
-    assert_eq!(Path::new("bar/foo..").to_path_buf().into_normalize().as_path(), Path::new("bar/foo.."));
-    assert_eq!(
-        Path::new("../foo../../../bar").to_path_buf().into_normalize().as_path(),
-        Path::new("../../bar")
-    );
-    assert_eq!(
-        Path::new("../foo../../../bar").to_path_buf().into_normalize().as_path(),
-        Path::new("../../bar")
-    );
-    assert_eq!(
-        Path::new("../.../.././.../../../bar").to_path_buf().into_normalize().as_path(),
-        Path::new("../../bar")
-    );
-    assert_eq!(
-        Path::new("../.../.././.../../../bar").to_path_buf().into_normalize().as_path(),
-        Path::new("../../bar")
-    );
-    assert_eq!(
-        Path::new("../../../foo/../../../bar").to_path_buf().into_normalize().as_path(),
-        Path::new("../../../../../bar")
-    );
-    assert_eq!(
-        Path::new("../../../foo/../../../bar/../../").to_path_buf().into_normalize().as_path(),
-        Path::new("../../../../../../")
-    );
-    assert_eq!(
-        Path::new("../foobar/barfoo/foo/../../../bar/../../").to_path_buf().into_normalize().as_path(),
-        Path::new("../../")
-    );
-    assert_eq!(
-        Path::new("../.../../foobar/../../../bar/../../baz").to_path_buf().into_normalize().as_path(),
-        Path::new("../../../../baz")
-    );
-    assert_eq!(
-        Path::new("foo/bar\\baz").to_path_buf().into_normalize().as_path(),
-        Path::new("foo/bar\\baz")
-    );
-    assert_eq!(Path::new("/a/b/c/../../../").to_path_buf().into_normalize().as_path(), Path::new("/"));
-    assert_eq!(Path::new("a/b/c/../../../").to_path_buf().into_normalize().as_path(), Path::new("."));
-    assert_eq!(Path::new("a/b/c/../../..").to_path_buf().into_normalize().as_path(), Path::new("."));
-
-    assert_eq!(Path::new("").to_path_buf().into_normalize().as_path(), Path::new("."));
+    assert_eq!(p!("").normalize(), p!("."));
 }
 
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {
-    assert_eq!(Path::new("").normalize(), Path::new("."));
+    assert_eq!(p!("").normalize(), p!("."));
     assert_eq!(
-        Path::new("./fixtures///b/../b/c.js").normalize(),
-        Path::new("fixtures\\b\\c.js")
+        p!("./fixtures///b/../b/c.js").normalize(),
+        p!("fixtures\\b\\c.js")
     );
+    assert_eq!(p!("/foo/../../../bar").normalize(), p!("\\bar"));
+    assert_eq!(p!("a//b//../b").normalize(), p!("a\\b"));
+    assert_eq!(p!("a//b//./c").normalize(), p!("a\\b\\c"));
     assert_eq!(
-        Path::new("/foo/../../../bar").normalize(),
-        Path::new("\\bar")
+        p!("//server/share/dir/file.ext").normalize(),
+        p!("\\\\server\\share\\dir\\file.ext")
     );
-    assert_eq!(Path::new("a//b//../b").normalize(), Path::new("a\\b"));
-    assert_eq!(Path::new("a//b//./c").normalize(), Path::new("a\\b\\c"));
+    assert_eq!(p!("/foo/../../../bar").normalize(), p!("\\bar"));
+    assert_eq!(p!("/a/b/c/../../../x/y/z").normalize(), p!("\\x\\y\\z"));
+    assert_eq!(p!("C:").normalize(), p!("C:."));
+    assert_eq!(p!("C:/").normalize(), p!("C:\\"));
+    assert_eq!(p!("").normalize(), p!("."));
+    assert_eq!(p!("c:/ignore").normalize(), p!("c:\\ignore"));
+    assert_eq!(p!("C:../a").normalize(), p!("C:..\\a"));
+    assert_eq!(p!("c:/../a").normalize(), p!("c:\\a"));
     assert_eq!(
-        Path::new("//server/share/dir/file.ext").normalize(),
-        Path::new("\\\\server\\share\\dir\\file.ext")
+        p!("C:..\\..\\abc\\..\\def").normalize(),
+        p!("C:..\\..\\def")
     );
-    assert_eq!(
-        Path::new("/foo/../../../bar").normalize(),
-        Path::new("\\bar")
-    );
-    assert_eq!(
-        Path::new("/a/b/c/../../../x/y/z").normalize(),
-        Path::new("\\x\\y\\z")
-    );
-    assert_eq!(Path::new("C:").normalize(), Path::new("C:."));
-    assert_eq!(Path::new("C:/").normalize(), Path::new("C:\\"));
-    assert_eq!(Path::new("").normalize(), Path::new("."));
-    assert_eq!(Path::new("c:/ignore").normalize(), Path::new("c:\\ignore"));
-    assert_eq!(Path::new("C:../a").normalize(), Path::new("C:..\\a"));
-    assert_eq!(Path::new("c:/../a").normalize(), Path::new("c:\\a"));
-    assert_eq!(
-        Path::new("C:..\\..\\abc\\..\\def").normalize(),
-        Path::new("C:..\\..\\def")
-    );
-    assert_eq!(
-        Path::new("C:\\..\\..\\abc\\..\\def").normalize(),
-        Path::new("C:\\def")
-    );
-    assert_eq!(Path::new("C:\\.").normalize(), Path::new("C:\\"));
+    assert_eq!(p!("C:\\..\\..\\abc\\..\\def").normalize(), p!("C:\\def"));
+    assert_eq!(p!("C:\\.").normalize(), p!("C:\\"));
 
+    assert_eq!(p!("file:stream").normalize(), p!("file:stream"));
+    assert_eq!(p!("bar\\foo..\\..\\").normalize(), p!("bar\\"));
+    assert_eq!(p!("bar\\foo..\\..\\").normalize(), p!("bar\\"));
+    assert_eq!(p!("bar\\foo..\\..").normalize(), p!("bar"));
+    assert_eq!(p!("bar\\foo..\\..\\baz").normalize(), p!("bar\\baz"));
+    assert_eq!(p!("bar\\foo..\\").normalize(), p!("bar\\foo..\\"));
+    assert_eq!(p!("..\\foo..\\..\\..\\bar").normalize(), p!("..\\..\\bar"));
     assert_eq!(
-        Path::new("file:stream").normalize(),
-        Path::new("file:stream")
+        p!("..\\...\\..\\.\\...\\..\\..\\bar").normalize(),
+        p!("..\\..\\bar")
     );
     assert_eq!(
-        Path::new("bar\\foo..\\..\\").normalize(),
-        Path::new("bar\\")
+        p!("../../../foo/../../../bar").normalize(),
+        p!("..\\..\\..\\..\\..\\bar")
     );
     assert_eq!(
-        Path::new("bar\\foo..\\..\\").normalize(),
-        Path::new("bar\\")
-    );
-    assert_eq!(Path::new("bar\\foo..\\..").normalize(), Path::new("bar"));
-    assert_eq!(
-        Path::new("bar\\foo..\\..\\baz").normalize(),
-        Path::new("bar\\baz")
+        p!("../../../foo/../../../bar/../../").normalize(),
+        p!("..\\..\\..\\..\\..\\..\\")
     );
     assert_eq!(
-        Path::new("bar\\foo..\\").normalize(),
-        Path::new("bar\\foo..\\")
+        p!("../foobar/barfoo/foo/../../../bar/../../").normalize(),
+        p!("..\\..\\")
     );
     assert_eq!(
-        Path::new("..\\foo..\\..\\..\\bar").normalize(),
-        Path::new("..\\..\\bar")
+        p!("../.../../foobar/../../../bar/../../baz").normalize(),
+        p!("..\\..\\..\\..\\baz")
     );
-    assert_eq!(
-        Path::new("..\\...\\..\\.\\...\\..\\..\\bar").normalize(),
-        Path::new("..\\..\\bar")
-    );
-    assert_eq!(
-        Path::new("../../../foo/../../../bar").normalize(),
-        Path::new("..\\..\\..\\..\\..\\bar")
-    );
-    assert_eq!(
-        Path::new("../../../foo/../../../bar/../../").normalize(),
-        Path::new("..\\..\\..\\..\\..\\..\\")
-    );
-    assert_eq!(
-        Path::new("../foobar/barfoo/foo/../../../bar/../../").normalize(),
-        Path::new("..\\..\\")
-    );
-    assert_eq!(
-        Path::new("../.../../foobar/../../../bar/../../baz").normalize(),
-        Path::new("..\\..\\..\\..\\baz")
-    );
-    assert_eq!(
-        Path::new("foo/bar\\baz").normalize(),
-        Path::new("foo\\bar\\baz")
-    );
+    assert_eq!(p!("foo/bar\\baz").normalize(), p!("foo\\bar\\baz"));
 }

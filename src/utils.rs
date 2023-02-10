@@ -1,5 +1,13 @@
 use std::path::{Path, Component, PathBuf};
 
+use once_cell::sync::Lazy;
+
+pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
+    // TODO: better way to get the current working directory?
+
+    std::env::current_dir().unwrap()
+});
+
 
 #[inline]
 pub fn normalize_to_component_vec(path: &Path) -> Option<Vec<Component>> {
