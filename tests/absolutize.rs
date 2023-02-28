@@ -29,6 +29,11 @@ fn unix() {
     assert_eq!(pb!().absolutize(), get_cwd());
 }
 
+#[test]
+fn make_sure_dots_are_resolved() {
+    assert!(!get_cwd().join("./main").normalize().display().to_string().contains('.'));
+}
+
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {

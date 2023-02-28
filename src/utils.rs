@@ -1,4 +1,4 @@
-use std::path::{Path, Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use once_cell::sync::Lazy;
 
@@ -8,17 +8,14 @@ pub(crate) static CWD: Lazy<PathBuf> = Lazy::new(|| {
     std::env::current_dir().unwrap()
 });
 
-
 #[inline]
-pub fn normalize_to_component_vec(path: &Path) -> Option<Vec<Component>> {
+pub fn normalize_to_component_vec(path: &Path) -> Vec<Component> {
     let mut components = path.components().peekable();
     let mut ret = Vec::with_capacity(components.size_hint().0);
     if let Some(c @ Component::Prefix(..)) = components.peek() {
         ret.push(*c);
         components.next();
     };
-
-    let mut has_resolved_dots = false;
 
     for component in components {
         match component {
@@ -27,7 +24,7 @@ pub fn normalize_to_component_vec(path: &Path) -> Option<Vec<Component>> {
                 ret.push(component);
             }
             Component::CurDir => {
-                has_resolved_dots = true;
+                // ignore
             }
             c @ Component::ParentDir => {
                 // For a non-absolute path `../../` or `c:../../`, we should preserve `..`
@@ -42,11 +39,8 @@ pub fn normalize_to_component_vec(path: &Path) -> Option<Vec<Component>> {
                         if is_last_parent_dir {
                             ret.push(c);
                         } else {
-                            has_resolved_dots = true;
                             ret.pop();
                         }
-                    } else {
-                        has_resolved_dots = true;
                     }
                 }
             }
@@ -56,11 +50,7 @@ pub fn normalize_to_component_vec(path: &Path) -> Option<Vec<Component>> {
         }
     }
 
-    if has_resolved_dots || ret.is_empty() {
-        Some(ret)
-    } else {
-        None
-    }
+    ret
 }
 
 #[inline]
