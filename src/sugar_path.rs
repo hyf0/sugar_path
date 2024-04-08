@@ -54,8 +54,16 @@ pub trait SugarPath {
   /// 
   /// ```rust
   /// use sugar_path::SugarPath;
-  /// assert_eq!("./world".absolutize_with("/hello"), "/hello/world".as_path());
-  /// assert_eq!("../world".absolutize_with("/hello"), "/world".as_path());
+  /// #[cfg(target_family = "unix")]
+  /// {
+  ///   assert_eq!("./world".absolutize_with("/hello"), "/hello/world".as_path());
+  ///   assert_eq!("../world".absolutize_with("/hello"), "/world".as_path());
+  /// }
+  /// #[cfg(target_family = "windows")]
+  /// {
+  ///  assert_eq!(".\\world".absolutize_with("C:\\hello"), "C:\\hello\\world".as_path());
+  ///   assert_eq!("..\\world".absolutize_with("C:\\hello"), "C:\\world".as_path());
+  /// }
   /// ```
   fn absolutize_with(&self, base: impl Into<PathBuf>) -> PathBuf;
 
