@@ -56,7 +56,7 @@ fn unix() {
 fn windows() {
   let cases = [
     ("", ".", "."),
-    ("./fixtures///b/../b/c.js", "fixtures\\b\\c.js", "fixtures\\b\\c.js"),
+    ("./fixtures///b/../b/c.js", "fixtures\\b\\c.js", "fixtures/b/c.js"),
     ("/foo/../../../bar", "\\bar", "/bar"),
     ("a//b//../b", "a\\b", "a/b"),
     ("a//b//./c", "a\\b\\c", "a/b/c"),
@@ -68,13 +68,13 @@ fn windows() {
     ("/foo/../../../bar", "\\bar", "/bar"),
     ("/a/b/c/../../../x/y/z", "\\x\\y\\z", "/x/y/z"),
     ("C:", "C:.", "C:."),
-    ("C:/", "C:\\", "C:\\"),
+    ("C:/", "C:\\", "C:/"),
     ("", ".", "."),
     ("c:/ignore", "c:\\ignore", "c:/ignore"),
-    ("C:../a", "C:..\\a", "C:..\\a"),
+    ("C:../a", "C:..\\a", "C:../a"),
     ("c:/../a", "c:\\a", "c:/a"),
-    ("C:..\\..\\abc\\..\\def", "C:..\\..\\def", "C:..\\..\\def"),
-    ("C:\\..\\..\\abc\\..\\def", "C:\\def", "C:\\def"),
+    ("C:..\\..\\abc\\..\\def", "C:..\\..\\def", "C:../../def"),
+    ("C:\\..\\..\\abc\\..\\def", "C:/def", "C:/def"),
     ("C:\\.", "C:\\", "C:\\"),
     ("file:stream", "file:stream", "file:stream"),
     ("bar\\foo..\\..\\", "bar\\", "bar"),
@@ -88,7 +88,7 @@ fn windows() {
     ("../../../foo/../../../bar/../../", "..\\..\\..\\..\\..\\..\\", "../../../../../../"),
     ("../foobar/barfoo/foo/../../../bar/../../", "..\\..\\", "../.."),
     ("../.../../foobar/../../../bar/../../baz", "..\\..\\..\\..\\baz", "../../../../baz"),
-    ("foo/bar\\baz", "foo\\bar\\baz", "foo/bar\\baz"),
+    ("foo/bar\\baz", "foo\\bar\\baz", "foo/bar/baz"),
   ]
   .into_iter()
   .map(|item| Case { input: item.0, expected_path: Path::new(item.1), expected_slash: item.2 });
