@@ -1,4 +1,7 @@
-use std::{borrow::Cow, path::{Component, Path, PathBuf}};
+use std::{
+  borrow::Cow,
+  path::{Component, Path, PathBuf},
+};
 
 use crate::utils::{component_vec_to_path_buf, to_normalized_components};
 
@@ -14,8 +17,8 @@ pub trait SugarPath {
   /// // For example, on POSIX:
   /// #[cfg(target_family = "unix")]
   /// assert_eq!(
-  ///   Path::new("/foo/bar//baz/asdf/quux/..").normalize(),
-  ///   Path::new("/foo/bar/baz/asdf")
+  ///   Path::new("/foo/bar//baz/asdf/quux/..").normalize().to_slash_lossy(),
+  ///   "/foo/bar/baz/asdf"
   /// );
   ///
   /// // On Windows:
@@ -49,24 +52,69 @@ pub trait SugarPath {
   /// use std::path::Path;
   /// use sugar_path::SugarPath;
   /// assert_eq!(
-  ///   Path::new("/var").relative("/var/lib"),
-  ///   Path::new("..")
+  ///   Path::new("/var").relative("/var/lib").to_slash_lossy(),
+  ///   ".."
   /// );
   /// assert_eq!(
-  ///   Path::new("/bin").relative("/var/lib"),
-  ///   Path::new("../../bin")
+  ///   Path::new("/bin").relative("/var/lib").to_slash_lossy(),
+  ///   "../../bin"
   /// );
   /// assert_eq!(
-  ///   Path::new("/a/b/c/d").relative("/a/b/f/g"),
-  ///   Path::new("../../c/d")
+  ///   Path::new("/a/b/c/d").relative("/a/b/f/g").to_slash_lossy(),
+  ///   "../../c/d"
   /// );
   /// ```
   fn relative(&self, to: impl AsRef<Path>) -> PathBuf;
 
-  /// [SugarPath::to_slash] will first call [Path::to_str], then it will replaces each separator character with a slash ('/').
+  /// [SugarPath::to_slash] converts the path to a string and replaces each separator character with a slash ('/').
+  /// 
+  /// ## Examples
+  /// 
+  /// ```rust
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  /// 
+  /// #[cfg(target_family = "unix")]
+  /// let p = Path::new("./hello/world");
+  /// 
+  /// #[cfg(target_family = "windows")]
+  /// let p = Path::new(".\\hello\\world");
+  /// 
+  /// assert_eq!(p.to_slash().unwrap(), "./hello/world");
+  /// ```
+  /// 
+  /// ## In Depth
+  /// 
+  /// When you convert [Path] to [String], you might get different results on different platforms. For `Path::new("./hello/world")`,
+  /// you will get `"./hello/world"` on Unix-like systems and `".\\hello\\world"` on Windows. This especially becomes a problem when
+  /// your snapshot files of tests contains paths.
+  /// 
+  /// This method solves this problem by converting the path to a string and replacing each separator character with a slash ('/').
+  /// So for `Path::new("./hello/world")`, you will get `"./hello/world"` on both Unix-like systems and Windows.
+  /// 
+  /// [SugarPath::to_slash] use [Path::to_str] to convert the path to string under the hood, so it will return `None` if the path contains invalid UTF-8.
   fn to_slash(&self) -> Option<Cow<str>>;
 
-  /// [SugarPath::to_slash] will first call `self.to_str_loos()`, then it will replaces each separator character with a slash ('/').
+  /// See [SugarPath::to_slash]
+  /// 
+  /// ## Examples
+  /// 
+  /// ```rust
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  /// 
+  /// #[cfg(target_family = "unix")]
+  /// let p = Path::new("./hello/world");
+  /// 
+  /// #[cfg(target_family = "windows")]
+  /// let p = Path::new(".\\hello\\world");
+  /// 
+  /// assert_eq!(p.to_slash_lossy(), "./hello/world");
+  /// ```
+  /// 
+  /// ## In Depth
+  /// 
+  /// This method is similar to [SugarPath::to_slash], but it use [Path::to_string_lossy] to convert the path to string.
   fn to_slash_lossy(&self) -> Cow<str>;
 }
 
@@ -198,5 +246,4 @@ impl SugarPath for Path {
       Cow::Owned(self.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/"))
     }
   }
-
 }
