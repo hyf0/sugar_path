@@ -1,4 +1,4 @@
-use std::path::{Component, Path, PathBuf};
+use std::{borrow::Cow, path::{Component, Path, PathBuf}};
 
 use crate::utils::{component_vec_to_path_buf, to_normalized_components};
 
@@ -62,6 +62,12 @@ pub trait SugarPath {
   /// );
   /// ```
   fn relative(&self, to: impl AsRef<Path>) -> PathBuf;
+
+  /// [SugarPath::to_slash] will first call [Path::to_str], then it will replaces each separator character with a slash ('/').
+  fn to_slash(&self) -> Option<Cow<str>>;
+
+  /// [SugarPath::to_slash] will first call `self.to_str_loos()`, then it will replaces each separator character with a slash ('/').
+  fn to_slash_lossy(&self) -> Cow<str>;
 }
 
 impl SugarPath for Path {
@@ -176,4 +182,21 @@ impl SugarPath for Path {
       ret
     }
   }
+
+  fn to_slash(&self) -> Option<Cow<str>> {
+    if std::path::MAIN_SEPARATOR == '/' {
+      self.to_str().map(Cow::Borrowed)
+    } else {
+      self.to_str().map(|s| Cow::Owned(s.replace(std::path::MAIN_SEPARATOR, "/")))
+    }
+  }
+
+  fn to_slash_lossy(&self) -> Cow<str> {
+    if std::path::MAIN_SEPARATOR == '/' {
+      self.to_string_lossy()
+    } else {
+      Cow::Owned(self.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/"))
+    }
+  }
+
 }
