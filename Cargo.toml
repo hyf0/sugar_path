@@ -1,8 +1,9 @@
 [package]
 name = "sugar_path"
 description = "Sugar functions for manipulating paths"
-repository = "https://github.com/iheyunfei/sugar_path"
-version = "0.0.12"
+keywords = ["path", "path-slash", "relative-path"]
+repository = "https://github.com/hyf0/sugar_path"
+version = "1.0.0"
 edition = "2021"
 license = "MIT"
 
