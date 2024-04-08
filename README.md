@@ -10,7 +10,7 @@ Sugar functions for manipulating paths.
 
 ## Main functionalities
 
-- [SugarPath::as_path](https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.as_path) makes it easy to convert `T: Deref<Target = str>` to `Path` and allows to you methods of `SugarPath` on `&str` or `String` directly.
+- [SugarPath::as_path](https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.as_path) makes it easy to convert `T: Deref<Target = str>` to `Path` and allows you to use methods of `SugarPath` on `&str` or `String` directly.
 
 ```rust
 use std::path::Path;
@@ -66,7 +66,7 @@ use sugar_path::SugarPath;
 }
 #[cfg(target_family = "windows")]
 {
- assert_eq!(".\\world".absolutize_with("C:\\hello"), "C:\\hello\\world".as_path());
+  assert_eq!(".\\world".absolutize_with("C:\\hello"), "C:\\hello\\world".as_path());
   assert_eq!("..\\world".absolutize_with("C:\\hello"), "C:\\world".as_path());
 }
 ```

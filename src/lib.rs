@@ -5,7 +5,7 @@
 //! [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 //!
 //! ## Main functionalities
-//! - [SugarPath::as_path] makes it easy to convert `T: Deref<Target = str>` to [Path](std::path::Path) and allows to you methods of [SugarPath] on `&str` or `String` directly.
+//! - [SugarPath::as_path] makes it easy to convert `T: Deref<Target = str>` to [Path](std::path::Path) and allows you to use methods of [SugarPath] on `&str` or `String` directly.
 //!
 //! ```rust
 //! use std::path::Path;
