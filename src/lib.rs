@@ -8,8 +8,8 @@
 //! - [Examples](https://github.com/iheyunfei/sugar_path/tree/main/tests)
 //! - [Usages](https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html)
 
-mod as_path;
-pub use as_path::*;
 mod sugar_path;
-pub use crate::sugar_path::*;
-pub(crate) mod utils;
+mod utils;
+mod impl_sugar_path;
+
+pub use sugar_path::SugarPath;
