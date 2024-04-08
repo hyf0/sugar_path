@@ -1,105 +1,102 @@
+use std::path::Path;
+
 use sugar_path::SugarPath;
 mod test_utils;
+
+#[derive(Debug)]
+pub struct Case {
+  input: &'static str,
+  expected_path: &'static Path,
+  expected_slash: &'static str,
+}
 
 #[cfg(target_family = "unix")]
 #[test]
 fn unix() {
-    assert_eq!(p!("/foo/../../../bar").normalize(), p!("/bar"));
-    assert_eq!(p!("a//b//../b").normalize(), p!("a/b"));
-    assert_eq!(p!("/foo/../../../bar").normalize(), p!("/bar"));
-    assert_eq!(p!("a//b//./c").normalize(), p!("a/b/c"));
-    assert_eq!(p!("a//b//.").normalize(), p!("a/b"));
-    assert_eq!(p!("/a/b/c/../../../x/y/z").normalize(), p!("/x/y/z"));
-    assert_eq!(p!("///..//./foo/.//bar").normalize(), p!("/foo/bar"));
-    assert_eq!(p!("bar/foo../../").normalize(), p!("bar/"));
-    assert_eq!(p!("bar/foo../..").normalize(), p!("bar"));
-    assert_eq!(p!("bar/foo../../baz").normalize(), p!("bar/baz"));
-    assert_eq!(p!("bar/foo../").normalize(), p!("bar/foo../"));
-    assert_eq!(p!("bar/foo..").normalize(), p!("bar/foo.."));
-    assert_eq!(p!("../foo../../../bar").normalize(), p!("../../bar"));
-    assert_eq!(p!("../foo../../../bar").normalize(), p!("../../bar"));
-    assert_eq!(p!("../.../.././.../../../bar").normalize(), p!("../../bar"));
-    assert_eq!(p!("../.../.././.../../../bar").normalize(), p!("../../bar"));
-    assert_eq!(
-        p!("../../../foo/../../../bar").normalize(),
-        p!("../../../../../bar")
-    );
-    assert_eq!(
-        p!("../../../foo/../../../bar/../../").normalize(),
-        p!("../../../../../../")
-    );
-    assert_eq!(
-        p!("../foobar/barfoo/foo/../../../bar/../../").normalize(),
-        p!("../../")
-    );
-    assert_eq!(
-        p!("../.../../foobar/../../../bar/../../baz").normalize(),
-        p!("../../../../baz")
-    );
-    assert_eq!(p!("foo/bar\\baz").normalize(), p!("foo/bar\\baz"));
-    assert_eq!(p!("/a/b/c/../../../").normalize(), p!("/"));
-    assert_eq!(p!("a/b/c/../../../").normalize(), p!("."));
-    assert_eq!(p!("a/b/c/../../..").normalize(), p!("."));
+  let cases = [
+    ("/foo/../../../bar", "/bar", "/bar"),
+    ("a//b//../b", "a/b", "a/b"),
+    ("/foo/../../../bar", "/bar", "/bar"),
+    ("a//b//./c", "a/b/c", "a/b/c"),
+    ("a//b//.", "a/b", "a/b"),
+    ("/a/b/c/../../../x/y/z", "/x/y/z", "/x/y/z"),
+    ("///..//./foo/.//bar", "/foo/bar", "/foo/bar"),
+    ("bar/foo../../", "bar/", "bar"),
+    ("bar/foo../..", "bar", "bar"),
+    ("bar/foo../../baz", "bar/baz", "bar/baz"),
+    ("bar/foo../", "bar/foo../", "bar/foo.."),
+    ("bar/foo..", "bar/foo..", "bar/foo.."),
+    ("../foo../../../bar", "../../bar", "../../bar"),
+    ("../foo../../../bar", "../../bar", "../../bar"),
+    ("../.../.././.../../../bar", "../../bar", "../../bar"),
+    ("../.../.././.../../../bar", "../../bar", "../../bar"),
+    ("../../../foo/../../../bar", "../../../../../bar", "../../../../../bar"),
+    ("../../../foo/../../../bar/../../", "../../../../../../", "../../../../../.."),
+    ("../foobar/barfoo/foo/../../../bar/../../", "../../", "../.."),
+    ("../.../../foobar/../../../bar/../../baz", "../../../../baz", "../../../../baz"),
+    ("foo/bar\\baz", "foo/bar\\baz", "foo/bar\\baz"),
+    ("/a/b/c/../../../", "/", "/"),
+    ("a/b/c/../../../", ".", "."),
+    ("a/b/c/../../..", ".", "."),
+    ("", ".", "."),
+  ]
+  .into_iter()
+  .map(|item| Case { input: item.0, expected_path: Path::new(item.1), expected_slash: item.2 });
 
-    assert_eq!(p!("").normalize(), p!("."));
+  for case in cases {
+    let normalized = case.input.normalize();
+    assert_eq!(normalized, case.expected_path, "case: {case:#?}");
+    assert_eq!(normalized.to_slash().as_deref(), Some(case.expected_slash), "case: {case:#?}");
+    assert_eq!(normalized.to_slash_lossy(), case.expected_slash, "case: {case:#?}");
+  }
 }
 
 #[cfg(target_family = "windows")]
 #[test]
 fn windows() {
-    assert_eq!(p!("").normalize(), p!("."));
-    assert_eq!(
-        p!("./fixtures///b/../b/c.js").normalize(),
-        p!("fixtures\\b\\c.js")
-    );
-    assert_eq!(p!("/foo/../../../bar").normalize(), p!("\\bar"));
-    assert_eq!(p!("a//b//../b").normalize(), p!("a\\b"));
-    assert_eq!(p!("a//b//./c").normalize(), p!("a\\b\\c"));
-    assert_eq!(
-        p!("//server/share/dir/file.ext").normalize(),
-        p!("\\\\server\\share\\dir\\file.ext")
-    );
-    assert_eq!(p!("/foo/../../../bar").normalize(), p!("\\bar"));
-    assert_eq!(p!("/a/b/c/../../../x/y/z").normalize(), p!("\\x\\y\\z"));
-    assert_eq!(p!("C:").normalize(), p!("C:."));
-    assert_eq!(p!("C:/").normalize(), p!("C:\\"));
-    assert_eq!(p!("").normalize(), p!("."));
-    assert_eq!(p!("c:/ignore").normalize(), p!("c:\\ignore"));
-    assert_eq!(p!("C:../a").normalize(), p!("C:..\\a"));
-    assert_eq!(p!("c:/../a").normalize(), p!("c:\\a"));
-    assert_eq!(
-        p!("C:..\\..\\abc\\..\\def").normalize(),
-        p!("C:..\\..\\def")
-    );
-    assert_eq!(p!("C:\\..\\..\\abc\\..\\def").normalize(), p!("C:\\def"));
-    assert_eq!(p!("C:\\.").normalize(), p!("C:\\"));
+  let cases = [
+    ("", ".", "."),
+    ("./fixtures///b/../b/c.js", "fixtures\\b\\c.js", "fixtures\\b\\c.js"),
+    ("/foo/../../../bar", "\\bar", "/bar"),
+    ("a//b//../b", "a\\b", "a/b"),
+    ("a//b//./c", "a\\b\\c", "a/b/c"),
+    (
+      "//server/share/dir/file.ext",
+      "\\\\server\\share\\dir\\file.ext",
+      "//server/share/dir/file.ext",
+    ),
+    ("/foo/../../../bar", "\\bar", "/bar"),
+    ("/a/b/c/../../../x/y/z", "\\x\\y\\z", "/x/y/z"),
+    ("C:", "C:.", "C:."),
+    ("C:/", "C:\\", "C:\\"),
+    ("", ".", "."),
+    ("c:/ignore", "c:\\ignore", "c:/ignore"),
+    ("C:../a", "C:..\\a", "C:..\\a"),
+    ("c:/../a", "c:\\a", "c:/a"),
+    ("C:..\\..\\abc\\..\\def", "C:..\\..\\def", "C:..\\..\\def"),
+    ("C:\\..\\..\\abc\\..\\def", "C:\\def", "C:\\def"),
+    ("C:\\.", "C:\\", "C:\\"),
+    ("file:stream", "file:stream", "file:stream"),
+    ("bar\\foo..\\..\\", "bar\\", "bar"),
+    ("bar\\foo..\\..\\", "bar\\", "bar"),
+    ("bar\\foo..\\..", "bar", "bar"),
+    ("bar\\foo..\\..\\baz", "bar\\baz", "bar/baz"),
+    ("bar\\foo..\\", "bar\\foo..\\", "bar/foo.."),
+    ("..\\foo..\\..\\..\\bar", "..\\..\\bar", "../../bar"),
+    ("..\\...\\..\\.\\...\\..\\..\\bar", "..\\..\\bar", "../../bar"),
+    ("../../../foo/../../../bar", "..\\..\\..\\..\\..\\bar", "../../../../../bar"),
+    ("../../../foo/../../../bar/../../", "..\\..\\..\\..\\..\\..\\", "../../../../../../"),
+    ("../foobar/barfoo/foo/../../../bar/../../", "..\\..\\", "../.."),
+    ("../.../../foobar/../../../bar/../../baz", "..\\..\\..\\..\\baz", "../../../../baz"),
+    ("foo/bar\\baz", "foo\\bar\\baz", "foo/bar\\baz"),
+  ]
+  .into_iter()
+  .map(|item| Case { input: item.0, expected_path: Path::new(item.1), expected_slash: item.2 });
 
-    assert_eq!(p!("file:stream").normalize(), p!("file:stream"));
-    assert_eq!(p!("bar\\foo..\\..\\").normalize(), p!("bar\\"));
-    assert_eq!(p!("bar\\foo..\\..\\").normalize(), p!("bar\\"));
-    assert_eq!(p!("bar\\foo..\\..").normalize(), p!("bar"));
-    assert_eq!(p!("bar\\foo..\\..\\baz").normalize(), p!("bar\\baz"));
-    assert_eq!(p!("bar\\foo..\\").normalize(), p!("bar\\foo..\\"));
-    assert_eq!(p!("..\\foo..\\..\\..\\bar").normalize(), p!("..\\..\\bar"));
-    assert_eq!(
-        p!("..\\...\\..\\.\\...\\..\\..\\bar").normalize(),
-        p!("..\\..\\bar")
-    );
-    assert_eq!(
-        p!("../../../foo/../../../bar").normalize(),
-        p!("..\\..\\..\\..\\..\\bar")
-    );
-    assert_eq!(
-        p!("../../../foo/../../../bar/../../").normalize(),
-        p!("..\\..\\..\\..\\..\\..\\")
-    );
-    assert_eq!(
-        p!("../foobar/barfoo/foo/../../../bar/../../").normalize(),
-        p!("..\\..\\")
-    );
-    assert_eq!(
-        p!("../.../../foobar/../../../bar/../../baz").normalize(),
-        p!("..\\..\\..\\..\\baz")
-    );
-    assert_eq!(p!("foo/bar\\baz").normalize(), p!("foo\\bar\\baz"));
+  for case in cases {
+    let normalized = case.input.normalize();
+    assert_eq!(normalized, case.expected_path, "case: {case:#?}");
+    assert_eq!(normalized.to_slash().as_deref(), Some(case.expected_slash), "case: {case:#?}");
+    assert_eq!(normalized.to_slash_lossy(), case.expected_slash, "case: {case:#?}");
+  }
 }
