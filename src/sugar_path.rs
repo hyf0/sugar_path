@@ -3,6 +3,8 @@ use std::{
   path::{Path, PathBuf},
 };
 
+use crate::utils::IntoCowPath;
+
 pub trait SugarPath {
   /// Normalizes the given path, resolving `'..'` and `'.'` segments.
   ///
@@ -65,7 +67,7 @@ pub trait SugarPath {
   ///   assert_eq!("..\\world".absolutize_with("C:\\hello"), "C:\\world".as_path());
   /// }
   /// ```
-  fn absolutize_with<'a>(&self, base: impl Into<Cow<'a, Path>>) -> PathBuf;
+  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> PathBuf;
 
   ///
   /// ```rust

@@ -1,6 +1,6 @@
 use std::{borrow::Cow, ops::Deref, path::{Component, Path, PathBuf}};
 
-use crate::{utils::{component_vec_to_path_buf, get_current_dir, to_normalized_components}, SugarPath};
+use crate::{utils::{component_vec_to_path_buf, get_current_dir, to_normalized_components, IntoCowPath}, SugarPath};
 
 impl SugarPath for Path {
   fn normalize(&self) -> PathBuf {
@@ -27,8 +27,8 @@ impl SugarPath for Path {
   // - Users could choose to pass a reference or an owned value depending on their use case.
   // - If we accept `PathBuf` only, it may cause unnecessary allocations on case that `self` is already absolute.
   // - If we accept `&Path` only, it may cause unnecessary cloning that users already have an owned value.
-  fn absolutize_with<'a>(&self, base: impl Into<Cow<'a, Path>>) -> PathBuf {
-    let base: Cow<'a, Path> = base.into();
+  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> PathBuf {
+    let base: Cow<'a, Path> = base.into_cow_path();
     let mut base = if base.is_absolute() { base } else { Cow::Owned(base.absolutize()) };
 
     if self.is_absolute() {
@@ -149,7 +149,7 @@ impl<T: Deref<Target = str>> SugarPath for T {
     self.as_path().absolutize()
   }
 
-  fn absolutize_with<'a>(&self, base: impl Into<Cow<'a, Path>>) -> PathBuf {
+  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> PathBuf {
     self.as_path().absolutize_with(base)
   }
 
@@ -179,4 +179,29 @@ fn _test_as_path() {
 
   let ref_string = &string;
   ref_string.as_path();
+}
+
+fn _test_absolutize_with() {
+  let tmp = "";
+
+  let str = "";
+  tmp.absolutize_with(str);
+
+  let string = String::new();
+  tmp.absolutize_with(string);
+
+  let ref_string = &String::new();
+  tmp.absolutize_with(ref_string);
+
+  let path = Path::new("");
+  tmp.absolutize_with(path);
+
+  let path_buf = PathBuf::new();
+  tmp.absolutize_with(path_buf);
+  
+  let cow_path = Cow::Borrowed(Path::new(""));
+  tmp.absolutize_with(cow_path);
+
+  let cow_str = Cow::Borrowed("");
+  tmp.absolutize_with(cow_str);
 }

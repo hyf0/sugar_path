@@ -11,6 +11,56 @@ pub fn get_current_dir() -> Cow<'static, Path> {
   }
 }
 
+pub trait IntoCowPath<'a> {
+  fn into_cow_path(self) -> Cow<'a, Path>;
+}
+
+impl<'a> IntoCowPath<'a> for &'a Path {
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    Cow::Borrowed(self)
+  }
+}
+
+impl<'a> IntoCowPath<'a> for PathBuf {
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    Cow::Owned(self)
+  }
+}
+
+impl<'a> IntoCowPath<'a> for &'a str {
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    Cow::Borrowed(Path::new(self))
+  }
+}
+
+impl<'a> IntoCowPath<'a> for String {
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    Cow::Owned(PathBuf::from(self))
+  }
+}
+
+impl<'a> IntoCowPath<'a> for &'a String {
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    Cow::Borrowed(Path::new(self))
+  }
+}
+
+impl<'a> IntoCowPath<'a> for Cow<'a, Path> {
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    Cow::Owned(PathBuf::from(self))
+  }
+}
+
+impl<'a> IntoCowPath<'a> for Cow<'a, str> {
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    match self {
+      Cow::Borrowed(s) => s.into_cow_path(),
+      Cow::Owned(s) => s.into_cow_path(),
+    }
+  }
+}
+
+
 #[inline]
 pub fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
   components.into_iter().collect()
