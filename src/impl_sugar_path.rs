@@ -1,6 +1,6 @@
 use std::{borrow::Cow, ops::Deref, path::{Component, Path, PathBuf}};
 
-use crate::{utils::{component_vec_to_path_buf, to_normalized_components}, SugarPath};
+use crate::{utils::{component_vec_to_path_buf, get_current_dir, to_normalized_components}, SugarPath};
 
 impl SugarPath for Path {
   fn normalize(&self) -> PathBuf {
@@ -20,12 +20,16 @@ impl SugarPath for Path {
   }
 
   fn absolutize(&self) -> PathBuf {
-    self.absolutize_with(std::env::current_dir().unwrap())
+    self.absolutize_with(get_current_dir())
   }
 
-  fn absolutize_with(&self, base: impl Into<PathBuf>) -> PathBuf {
-    let base: PathBuf = base.into();
-    let mut base = if base.is_absolute() { base } else { base.absolutize() };
+  // Using `Cow` is on purpose.
+  // - Users could choose to pass a reference or an owned value depending on their use case.
+  // - If we accept `PathBuf` only, it may cause unnecessary allocations on case that `self` is already absolute.
+  // - If we accept `&Path` only, it may cause unnecessary cloning that users already have an owned value.
+  fn absolutize_with<'a>(&self, base: impl Into<Cow<'a, Path>>) -> PathBuf {
+    let base: Cow<'a, Path> = base.into();
+    let mut base = if base.is_absolute() { base } else { Cow::Owned(base.absolutize()) };
 
     if self.is_absolute() {
       self.normalize()
@@ -44,11 +48,11 @@ impl SugarPath for Path {
         components.insert(1, Component::RootDir);
         component_vec_to_path_buf(components).normalize()
       } else {
-        base.push(self);
+        base.to_mut().push(self);
         base.normalize()
       }
     } else {
-      base.push(self);
+      base.to_mut().push(self);
       base.normalize()
     }
   }
@@ -145,7 +149,7 @@ impl<T: Deref<Target = str>> SugarPath for T {
     self.as_path().absolutize()
   }
 
-  fn absolutize_with(&self, base: impl Into<PathBuf>) -> PathBuf {
+  fn absolutize_with<'a>(&self, base: impl Into<Cow<'a, Path>>) -> PathBuf {
     self.as_path().absolutize_with(base)
   }
 

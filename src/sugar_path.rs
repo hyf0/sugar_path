@@ -65,7 +65,7 @@ pub trait SugarPath {
   ///   assert_eq!("..\\world".absolutize_with("C:\\hello"), "C:\\world".as_path());
   /// }
   /// ```
-  fn absolutize_with(&self, base: impl Into<PathBuf>) -> PathBuf;
+  fn absolutize_with<'a>(&self, base: impl Into<Cow<'a, Path>>) -> PathBuf;
 
   ///
   /// ```rust
