@@ -84,7 +84,7 @@ pub fn component_vec_to_path_buf(components: ComponentVec) -> PathBuf {
 
 pub fn to_normalized_components<'a>(path: &'a Path) -> ComponentVec<'a> {
   let mut components = path.components().peekable();
-  let mut ret = SmallVec::with_capacity(components.size_hint().1.unwrap_or(0));
+  let mut ret = SmallVec::with_capacity(components.size_hint().1.unwrap_or(8));
   if let Some(c @ Component::Prefix(..)) = components.peek() {
     ret.push(*c);
     components.next();
