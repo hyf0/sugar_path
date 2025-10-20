@@ -26,7 +26,7 @@ impl SugarPath for Path {
       components.push(Component::CurDir)
     }
 
-    components.into_iter().collect()
+    components.iter().collect()
   }
 
   fn absolutize(&self) -> PathBuf {
@@ -38,12 +38,14 @@ impl SugarPath for Path {
   // - If we accept `PathBuf` only, it may cause unnecessary allocations on case that `self` is already absolute.
   // - If we accept `&Path` only, it may cause unnecessary cloning that users already have an owned value.
   fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> PathBuf {
+    if self.is_absolute() {
+      return self.normalize();
+    }
+
     let base: Cow<'a, Path> = base.into_cow_path();
     let mut base = if base.is_absolute() { base } else { Cow::Owned(base.absolutize()) };
 
-    if self.is_absolute() {
-      self.normalize()
-    } else if cfg!(target_family = "windows") {
+    if cfg!(target_family = "windows") {
       // Consider c:
       let mut components = self.components();
       if matches!(components.next(), Some(Component::Prefix(_)))
