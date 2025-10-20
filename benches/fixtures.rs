@@ -25,6 +25,29 @@ pub static FIXTURES: &[&str] = &[
   "a/b/c/../../../",
   "a/b/c/../../..",
   "",
+  // Deep paths (8 components - at SmallVec boundary)
+  "a/b/c/d/e/f/g/h",
+  "/level1/level2/level3/level4/level5/level6/level7/level8",
+  // Deep paths (9-12 components - just over SmallVec inline capacity)
+  "a/b/c/d/e/f/g/h/i",
+  "/level1/level2/level3/level4/level5/level6/level7/level8/level9",
+  "comp1/comp2/comp3/comp4/comp5/comp6/comp7/comp8/comp9/comp10",
+  "/root/sub1/sub2/sub3/sub4/sub5/sub6/sub7/sub8/sub9/sub10/file.txt",
+  // Deep paths (15+ components)
+  "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o",
+  "/level1/level2/level3/level4/level5/level6/level7/level8/level9/level10/level11/level12/level13/level14/level15",
+  // Very deep paths (20+ components)
+  "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t",
+  "/home/user/projects/company/backend/services/api/controllers/v2/handlers/auth/login/validate/token/refresh/generate/new",
+  // Deep paths with dots for normalization
+  "a/./b/./c/./d/./e/./f/./g/./h/./i/./j",
+  "/level1/./level2/./level3/./level4/./level5/./level6/./level7/./level8/./level9",
+  "a/b/../c/d/../e/f/../g/h/../i/j/../k/l/../m/n/../o/p",
+  "/level1/level2/../level3/level4/../level5/level6/../level7/level8/../level9/level10",
+  // Complex normalization with deep nesting
+  "a/./b/../c/./d/../e/./f/../g/./h/../i/./j/../k/./l/../m/./n/../o/./p",
+  "../../../a/b/c/../../d/e/f/../../g/h/i/../../j/k/l/../../m/n/o",
+  "./a/b/./c/../d/./e/f/../../g/h/./i/../j/./k/l/../../m/./n/o/../p/q/./r",
 ];
 
 #[allow(dead_code)]
@@ -50,4 +73,9 @@ pub static ABSOLUTE_PATHS: &[&str] = &[
   "/usr/bin/python3",
   "/var/spool/mail",
   "/opt/tools/scripts/deploy.sh",
+  // Deep absolute paths
+  "/level1/level2/level3/level4/level5/level6/level7/level8/level9/level10/level11/level12",
+  "/usr/local/share/doc/packages/example/tutorials/advanced/chapter1/section2/subsection3/page4.html",
+  "/home/user/workspace/projects/company/backend/microservices/auth-service/src/controllers/v2/handlers/login.js",
+  "/var/log/applications/production/cluster-01/node-03/services/api-gateway/2024/01/15/access.log",
 ];
