@@ -81,13 +81,13 @@ impl SugarPath for Path {
       };
 
       // Collect components using SmallVec to avoid heap allocation for typical paths
-      let base_components: ComponentVec = base.components().filter(filter_fn).collect();
-      let target_components: ComponentVec = target.components().filter(filter_fn).collect();
+      let base_components = base.components().filter(filter_fn);
+      let target_components = target.components().filter(filter_fn);
 
       // Find common prefix length
       let common_len = base_components
-        .iter()
-        .zip(target_components.iter())
+        .clone()
+        .zip(target_components.clone())
         .take_while(|(from, to)| {
           // Handle Windows case-insensitive comparison
           if cfg!(target_family = "windows")
@@ -100,16 +100,15 @@ impl SugarPath for Path {
         .count();
 
       // Build the result path without repeated PathBuf::push allocations
-      let up_len = base_components.len().saturating_sub(common_len);
-      let down_len = target_components.len().saturating_sub(common_len);
-      let mut components: ComponentVec<'_> = SmallVec::new();
-      components.reserve(up_len + down_len);
+      let up_len = base_components.count().saturating_sub(common_len);
+      let down_len = target_components.clone().count().saturating_sub(common_len);
+      let mut components: ComponentVec<'_> = SmallVec::with_capacity(up_len + down_len);
 
       for _ in 0..up_len {
         components.push(Component::ParentDir);
       }
 
-      components.extend(target_components[common_len..].iter().cloned());
+      components.extend(target_components.skip(common_len));
 
       component_vec_to_path_buf(components)
     }
