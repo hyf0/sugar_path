@@ -4,21 +4,26 @@ description = "Sugar functions for manipulating paths"
 keywords = ["path", "path-slash", "relative-path"]
 repository = "https://github.com/hyf0/sugar_path"
 version = "1.2.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 
 [features]
 # Enable `cached_current_dir` will make `SugarPath` to only call `std::env::current_dir` once for all path operations.
 cached_current_dir = []
+codspeed = ["criterion2/codspeed"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dev-dependencies]
-criterion = "0.4.0"
+criterion2 = { version = "3", default-features = false }
 
 [profile.bench]
 debug = true
 
 [[bench]]
 name = "absolutize"
+harness = false
+
+[[bench]]
+name = "normalize"
 harness = false

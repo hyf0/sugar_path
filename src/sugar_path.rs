@@ -42,7 +42,7 @@ pub trait SugarPath {
   /// A shortcut of [SugarPath::absolutize_with] with passing `std::env::current_dir().unwrap()` as the base path.
   ///
   /// ## Examples
-  /// 
+  ///
   /// ```rust
   /// use sugar_path::SugarPath;
   /// let cwd = std::env::current_dir().unwrap();
@@ -53,7 +53,7 @@ pub trait SugarPath {
   /// Allows you to absolutize the given path with the base path.
   ///
   /// ## Examples
-  /// 
+  ///
   /// ```rust
   /// use sugar_path::SugarPath;
   /// #[cfg(target_family = "unix")]
@@ -115,7 +115,7 @@ pub trait SugarPath {
   /// So for `Path::new("./hello/world")`, you will get `"./hello/world"` on both Unix-like systems and Windows.
   ///
   /// [SugarPath::to_slash] use [Path::to_str] to convert the path to string under the hood, so it will return `None` if the path contains invalid UTF-8.
-  fn to_slash(&self) -> Option<Cow<str>>;
+  fn to_slash<'a>(&'a self) -> Option<Cow<'a, str>>;
 
   /// This method is similar to [SugarPath::to_slash], but it use [Path::to_string_lossy] to convert the path to string.
   ///
@@ -133,7 +133,7 @@ pub trait SugarPath {
   ///
   /// assert_eq!(p.to_slash_lossy(), "./hello/world");
   /// ```
-  fn to_slash_lossy(&self) -> Cow<str>;
+  fn to_slash_lossy<'a>(&'a self) -> Cow<'a, str>;
 
   /// An utility method to makes it easy to convert `T: Deref<Target = str>` to [Path](std::path::Path) and allows to you methods of [SugarPath] on `&str` or `String` directly.
   ///

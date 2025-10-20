@@ -14,8 +14,8 @@ macro_rules! pb {
 
 #[macro_export]
 macro_rules! p {
-    ( $x:expr  ) => {{
-        let path = std::path::Path::new($x);
-        path
-    }};
+  ( $x:expr  ) => {{
+    let path = std::path::Path::new($x);
+    path
+  }};
 }
