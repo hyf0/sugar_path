@@ -27,3 +27,15 @@ harness = false
 [[bench]]
 name = "normalize"
 harness = false
+
+[[bench]]
+name = "relative"
+harness = false
+
+[[bench]]
+name = "to_slash"
+harness = false
+
+[[bench]]
+name = "as_path"
+harness = false
