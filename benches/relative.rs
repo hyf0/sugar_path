@@ -33,6 +33,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
   c.bench_function("relative_deep_nesting", |b| {
     let deep_cases = vec![
+      // Original cases (7-8 components)
       ("/a/b/c/d/e/f/g", "/a/b/c/d/e/f/h"),
       ("/a/b/c/d/e/f/g", "/x/y/z"),
       ("/very/long/path/to/some/deeply/nested/directory", "/very/long/path/to/another/directory"),
@@ -40,6 +41,20 @@ fn criterion_benchmark(c: &mut Criterion) {
         "/usr/local/lib/python3.9/site-packages/numpy",
         "/usr/local/lib/python3.9/site-packages/pandas",
       ),
+      // 8 components - at SmallVec boundary
+      ("/level1/level2/level3/level4/level5/level6/level7/level8",
+       "/level1/level2/level3/level4/level5/level6/level7/different8"),
+      // 10 components - just over SmallVec boundary
+      ("/a/b/c/d/e/f/g/h/i/j", "/a/b/c/d/e/f/g/h/x/y"),
+      // 15 components - well over SmallVec boundary
+      ("/root/sub1/sub2/sub3/sub4/sub5/sub6/sub7/sub8/sub9/sub10/sub11/sub12/sub13/sub14",
+       "/root/sub1/sub2/sub3/sub4/sub5/sub6/sub7/sub8/sub9/sub10/sub11/different12/different13/different14"),
+      // 20 components - extreme depth
+      ("/home/user/projects/company/backend/services/api/controllers/v2/handlers/auth/login/validate/token/refresh/generate/key/store/cache",
+       "/home/user/projects/company/backend/services/api/controllers/v2/handlers/auth/login/validate/token/refresh/generate/key/fetch/remote"),
+      // Different common prefix depths with deep paths
+      ("/level1/level2/level3/level4/level5/level6/level7/level8/level9/level10/unique1/unique2",
+       "/level1/level2/level3/level4/different5/different6/different7/different8/different9/different10/different11/different12"),
     ];
 
     b.iter(|| {
