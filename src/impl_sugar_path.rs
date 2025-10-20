@@ -6,27 +6,15 @@ use std::{
 
 use crate::{
   SugarPath,
-  utils::{
-    ComponentVec, IntoCowPath, component_vec_to_path_buf, get_current_dir, to_normalized_components,
-  },
+  utils::{ComponentVec, IntoCowPath, get_current_dir, to_normalized_components},
 };
 
 impl SugarPath for Path {
   fn normalize(&self) -> PathBuf {
-    let mut components = to_normalized_components(self);
+    let peekable = self.components().peekable();
+    let mut components = to_normalized_components(peekable);
 
-    if components.is_empty() {
-      return PathBuf::from(".");
-    }
-
-    if cfg!(target_family = "windows")
-      && components.len() == 1
-      && matches!(components[0], Component::Prefix(_))
-    {
-      components.push(Component::CurDir)
-    }
-
-    components.iter().collect()
+    normalize_inner(&mut components)
   }
 
   fn absolutize(&self) -> PathBuf {
@@ -47,18 +35,19 @@ impl SugarPath for Path {
 
     if cfg!(target_family = "windows") {
       // Consider c:
-      let mut components = self.components();
-      if matches!(components.next(), Some(Component::Prefix(_)))
-        && !matches!(components.next(), Some(Component::RootDir))
+      let mut components = self.components().peekable();
+      if matches!(components.peek(), Some(Component::Prefix(_)))
+        && !matches!(components.peek(), Some(Component::RootDir))
       {
         // TODO: Windows has the concept of drive-specific current working
         // directories. If we've resolved a drive letter but not yet an
         // absolute path, get cwd for that drive, or the process cwd if
         // the drive cwd is not available. We're sure the device is not
         // a UNC path at this points, because UNC paths are always absolute.
-        let mut components: ComponentVec = self.components().collect();
+        let mut components: ComponentVec = components.collect();
         components.insert(1, Component::RootDir);
-        component_vec_to_path_buf(components).normalize()
+        let mut components = to_normalized_components(components.into_iter().peekable());
+        normalize_inner(&mut components)
       } else {
         base.to_mut().push(self);
         base.normalize()
@@ -137,6 +126,22 @@ impl SugarPath for Path {
   fn as_path(&self) -> &Path {
     self
   }
+}
+
+#[inline]
+fn normalize_inner(components: &mut ComponentVec) -> PathBuf {
+  if components.is_empty() {
+    return PathBuf::from(".");
+  }
+
+  if cfg!(target_family = "windows")
+    && components.len() == 1
+    && matches!(components[0], Component::Prefix(_))
+  {
+    components.push(Component::CurDir)
+  }
+
+  components.iter().collect()
 }
 
 impl<T: Deref<Target = str>> SugarPath for T {
