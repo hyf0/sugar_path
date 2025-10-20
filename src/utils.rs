@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use std::{
   borrow::Cow,
   path::{Component, Path, PathBuf},
@@ -70,14 +71,17 @@ impl<'a> IntoCowPath<'a> for Cow<'a, str> {
   }
 }
 
+// Type alias for SmallVec with stack capacity of 8 (typical path depth)
+pub type ComponentVec<'a> = SmallVec<[Component<'a>; 8]>;
+
 #[inline]
-pub fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
+pub fn component_vec_to_path_buf(components: ComponentVec) -> PathBuf {
   components.into_iter().collect()
 }
 
-pub fn to_normalized_components<'a>(path: &'a Path) -> Vec<Component<'a>> {
+pub fn to_normalized_components<'a>(path: &'a Path) -> ComponentVec<'a> {
   let mut components = path.components().peekable();
-  let mut ret = Vec::with_capacity(components.size_hint().0);
+  let mut ret = SmallVec::with_capacity(components.size_hint().0);
   if let Some(c @ Component::Prefix(..)) = components.peek() {
     ret.push(*c);
     components.next();

@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
   SugarPath,
-  utils::{IntoCowPath, component_vec_to_path_buf, get_current_dir, to_normalized_components},
+  utils::{ComponentVec, IntoCowPath, component_vec_to_path_buf, get_current_dir, to_normalized_components},
 };
 
 impl SugarPath for Path {
@@ -52,7 +52,7 @@ impl SugarPath for Path {
         // absolute path, get cwd for that drive, or the process cwd if
         // the drive cwd is not available. We're sure the device is not
         // a UNC path at this points, because UNC paths are always absolute.
-        let mut components = self.components().collect::<Vec<_>>();
+        let mut components: ComponentVec = self.components().collect();
         components.insert(1, Component::RootDir);
         component_vec_to_path_buf(components).normalize()
       } else {
@@ -71,52 +71,40 @@ impl SugarPath for Path {
     if base == target {
       PathBuf::new()
     } else {
-      let base_components = base
-        .components()
-        .filter(|com| {
-          matches!(com, Component::Normal(_) | Component::Prefix(_) | Component::RootDir)
-        })
-        .collect::<Vec<_>>();
-      let target_components = target
-        .components()
-        .filter(|com| {
-          matches!(com, Component::Normal(_) | Component::Prefix(_) | Component::RootDir)
-        })
-        .collect::<Vec<_>>();
-      let mut ret = PathBuf::new();
-      let longest_len = if base_components.len() > target_components.len() {
-        base_components.len()
-      } else {
-        target_components.len()
+      // Filter components inline
+      let filter_fn = |com: &Component| {
+        matches!(com, Component::Normal(_) | Component::Prefix(_) | Component::RootDir)
       };
-      let mut i = 0;
-      while i < longest_len {
-        let from_component = base_components.get(i);
-        let to_component = target_components.get(i);
-        // println!("process from: {:?}, to: {:?}", from_component, to_component);
-        if cfg!(target_family = "windows")
-          && let Some(Component::Normal(from_seg)) = from_component
-          && let Some(Component::Normal(to_seg)) = to_component
-          && from_seg.eq_ignore_ascii_case(to_seg)
-        {
-          i += 1;
-          continue;
-        }
-        if from_component != to_component {
-          break;
-        }
-        i += 1;
-      }
-      let mut from_start = i;
-      while from_start < base_components.len() {
+
+      // Collect components using SmallVec to avoid heap allocation for typical paths
+      let base_components: ComponentVec = base.components().filter(filter_fn).collect();
+      let target_components: ComponentVec = target.components().filter(filter_fn).collect();
+
+      // Find common prefix length
+      let common_len = base_components
+        .iter()
+        .zip(target_components.iter())
+        .take_while(|(from, to)| {
+          // Handle Windows case-insensitive comparison
+          if cfg!(target_family = "windows")
+            && let (Component::Normal(from_seg), Component::Normal(to_seg)) = (from, to) {
+              return from_seg.eq_ignore_ascii_case(to_seg);
+            }
+          from == to
+        })
+        .count();
+
+      // Build the result path
+      let mut ret = PathBuf::new();
+
+      // Add ".." for each remaining component in base
+      for _ in &base_components[common_len..] {
         ret.push("..");
-        from_start += 1;
       }
 
-      let mut to_start = i;
-      while to_start < target_components.len() {
-        ret.push(target_components[to_start]);
-        to_start += 1;
+      // Add remaining target components
+      for component in &target_components[common_len..] {
+        ret.push(component);
       }
 
       ret
@@ -127,7 +115,14 @@ impl SugarPath for Path {
     if std::path::MAIN_SEPARATOR == '/' {
       self.to_str().map(Cow::Borrowed)
     } else {
-      self.to_str().map(|s| Cow::Owned(s.replace(std::path::MAIN_SEPARATOR, "/")))
+      self.to_str().map(|s| {
+        // Only allocate if we actually need to replace separators
+        if s.contains(std::path::MAIN_SEPARATOR) {
+          Cow::Owned(s.replace(std::path::MAIN_SEPARATOR, "/"))
+        } else {
+          Cow::Borrowed(s)
+        }
+      })
     }
   }
 
@@ -135,7 +130,13 @@ impl SugarPath for Path {
     if std::path::MAIN_SEPARATOR == '/' {
       self.to_string_lossy()
     } else {
-      Cow::Owned(self.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/"))
+      let s = self.to_string_lossy();
+      // Only allocate if we actually need to replace separators
+      if s.contains(std::path::MAIN_SEPARATOR) {
+        Cow::Owned(s.replace(std::path::MAIN_SEPARATOR, "/"))
+      } else {
+        s
+      }
     }
   }
 
