@@ -4,9 +4,13 @@ use std::{
   path::{Component, Path, PathBuf},
 };
 
+use smallvec::SmallVec;
+
 use crate::{
   SugarPath,
-  utils::{ComponentVec, IntoCowPath, component_vec_to_path_buf, get_current_dir, to_normalized_components},
+  utils::{
+    ComponentVec, IntoCowPath, component_vec_to_path_buf, get_current_dir, to_normalized_components,
+  },
 };
 
 impl SugarPath for Path {
@@ -87,27 +91,27 @@ impl SugarPath for Path {
         .take_while(|(from, to)| {
           // Handle Windows case-insensitive comparison
           if cfg!(target_family = "windows")
-            && let (Component::Normal(from_seg), Component::Normal(to_seg)) = (from, to) {
-              return from_seg.eq_ignore_ascii_case(to_seg);
-            }
+            && let (Component::Normal(from_seg), Component::Normal(to_seg)) = (from, to)
+          {
+            return from_seg.eq_ignore_ascii_case(to_seg);
+          }
           from == to
         })
         .count();
 
-      // Build the result path
-      let mut ret = PathBuf::new();
+      // Build the result path without repeated PathBuf::push allocations
+      let up_len = base_components.len().saturating_sub(common_len);
+      let down_len = target_components.len().saturating_sub(common_len);
+      let mut components: ComponentVec<'_> = SmallVec::new();
+      components.reserve(up_len + down_len);
 
-      // Add ".." for each remaining component in base
-      for _ in &base_components[common_len..] {
-        ret.push("..");
+      for _ in 0..up_len {
+        components.push(Component::ParentDir);
       }
 
-      // Add remaining target components
-      for component in &target_components[common_len..] {
-        ret.push(component);
-      }
+      components.extend(target_components[common_len..].iter().cloned());
 
-      ret
+      component_vec_to_path_buf(components)
     }
   }
 
@@ -115,13 +119,9 @@ impl SugarPath for Path {
     if std::path::MAIN_SEPARATOR == '/' {
       self.to_str().map(Cow::Borrowed)
     } else {
-      self.to_str().map(|s| {
-        // Only allocate if we actually need to replace separators
-        if s.contains(std::path::MAIN_SEPARATOR) {
-          Cow::Owned(s.replace(std::path::MAIN_SEPARATOR, "/"))
-        } else {
-          Cow::Borrowed(s)
-        }
+      self.to_str().map(|s| match replace_main_separator(s) {
+        Some(replaced) => Cow::Owned(replaced),
+        None => Cow::Borrowed(s),
       })
     }
   }
@@ -130,12 +130,15 @@ impl SugarPath for Path {
     if std::path::MAIN_SEPARATOR == '/' {
       self.to_string_lossy()
     } else {
-      let s = self.to_string_lossy();
-      // Only allocate if we actually need to replace separators
-      if s.contains(std::path::MAIN_SEPARATOR) {
-        Cow::Owned(s.replace(std::path::MAIN_SEPARATOR, "/"))
-      } else {
-        s
+      match self.to_string_lossy() {
+        Cow::Borrowed(s) => match replace_main_separator(s) {
+          Some(replaced) => Cow::Owned(replaced),
+          None => Cow::Borrowed(s),
+        },
+        Cow::Owned(owned) => match replace_main_separator(&owned) {
+          Some(replaced) => Cow::Owned(replaced),
+          None => Cow::Owned(owned),
+        },
       }
     }
   }
@@ -172,6 +175,28 @@ impl<T: Deref<Target = str>> SugarPath for T {
 
   fn as_path(&self) -> &Path {
     Path::new(self.deref())
+  }
+}
+
+fn replace_main_separator(input: &str) -> Option<String> {
+  let sep = std::path::MAIN_SEPARATOR;
+  let mut replaced: Option<String> = None;
+  let mut segment_start = 0;
+
+  for (idx, ch) in input.char_indices() {
+    if ch == sep {
+      let buf = replaced.get_or_insert_with(|| String::with_capacity(input.len()));
+      buf.push_str(&input[segment_start..idx]);
+      buf.push('/');
+      segment_start = idx + ch.len_utf8();
+    }
+  }
+
+  if let Some(mut buf) = replaced {
+    buf.push_str(&input[segment_start..]);
+    Some(buf)
+  } else {
+    None
   }
 }
 
