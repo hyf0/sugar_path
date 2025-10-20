@@ -4,8 +4,6 @@ use std::{
   path::{Component, Path, PathBuf},
 };
 
-use smallvec::SmallVec;
-
 use crate::{
   SugarPath,
   utils::{
@@ -101,16 +99,8 @@ impl SugarPath for Path {
 
       // Build the result path without repeated PathBuf::push allocations
       let up_len = base_components.count().saturating_sub(common_len);
-      let down_len = target_components.clone().count().saturating_sub(common_len);
-      let mut components: ComponentVec<'_> = SmallVec::with_capacity(up_len + down_len);
 
-      for _ in 0..up_len {
-        components.push(Component::ParentDir);
-      }
-
-      components.extend(target_components.skip(common_len));
-
-      component_vec_to_path_buf(components)
+      (0..up_len).map(|_| Component::ParentDir).chain(target_components.skip(common_len)).collect()
     }
   }
 
