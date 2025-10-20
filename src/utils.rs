@@ -1,4 +1,8 @@
-use std::{borrow::Cow, path::{Component, Path, PathBuf}, sync::OnceLock};
+use std::{
+  borrow::Cow,
+  path::{Component, Path, PathBuf},
+  sync::OnceLock,
+};
 
 static CURRENT_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -24,6 +28,12 @@ impl<'a> IntoCowPath<'a> for &'a Path {
 impl<'a> IntoCowPath<'a> for PathBuf {
   fn into_cow_path(self) -> Cow<'a, Path> {
     Cow::Owned(self)
+  }
+}
+
+impl<'a> IntoCowPath<'a> for &'a PathBuf {
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    Cow::Borrowed(self.as_path())
   }
 }
 
@@ -60,13 +70,12 @@ impl<'a> IntoCowPath<'a> for Cow<'a, str> {
   }
 }
 
-
 #[inline]
 pub fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
   components.into_iter().collect()
 }
 
-pub fn to_normalized_components(path: &Path) -> Vec<Component> {
+pub fn to_normalized_components<'a>(path: &'a Path) -> Vec<Component<'a>> {
   let mut components = path.components().peekable();
   let mut ret = Vec::with_capacity(components.size_hint().0);
   if let Some(c @ Component::Prefix(..)) = components.peek() {

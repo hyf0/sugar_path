@@ -4,33 +4,23 @@ on:
 name: Test
 
 jobs:
-  test_posix:
-    name: Test posix
-    runs-on: ubuntu-latest
+  test:
+    name: Test ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
       - name: Install stable
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
             toolchain: stable
-            override: true
             components: rustfmt, clippy
+
+      - name: lint
+        run: |
+          cargo fmt --all --check
+          cargo clippy --all-targets --all-features -- -D warnings
       - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-  test_windows:
-    name: Test windows
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install stable
-        uses: actions-rs/toolchain@v1
-        with:
-            toolchain: stable
-            override: true
-            components: rustfmt, clippy
-      - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+        run: cargo test

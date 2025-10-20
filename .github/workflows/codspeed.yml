@@ -1,0 +1,44 @@
+name: Codspeed
+
+permissions: {}
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-codspeed
+
+      - name: Build benchmark
+        run: cargo codspeed build --features codspeed
+
+      - name: Run benchmark
+        uses: CodSpeedHQ/action@v4
+        timeout-minutes: 15
+        with:
+          run: cargo codspeed run
+          mode: instrumentation
+          token: ${{ secrets.CODSPEED_TOKEN }}

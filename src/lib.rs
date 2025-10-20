@@ -48,13 +48,13 @@
 //! ```
 //!
 //! - [SugarPath::absolutize] is a shortcut of [SugarPath::absolutize_with] with passing `std::env::current_dir().unwrap()` as the base path.
-//! 
+//!
 //! ```rust
 //! use sugar_path::SugarPath;
 //! let cwd = std::env::current_dir().unwrap();
 //! assert_eq!("hello/world".absolutize(), cwd.join("hello").join("world"));
 //! ```
-//! 
+//!
 //! - [SugarPath::absolutize_with] allows you to absolutize the given path with the base path.
 //!
 //! ```rust

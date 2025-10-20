@@ -1,24 +1,28 @@
-use std::path::Path;
+use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use sugar_path::SugarPath;
 
+mod fixtures;
 
-
-fn absolutize() {
-  // "./hello".absolutize();
-  "/hello".absolutize();
-}
-
-fn absolutize_with(cwd: &Path) {
-  // "./hello".absolutize_with(cwd);
-  "/hello".absolutize_with(cwd);
-}
+use fixtures::ABSOLUTE_PATHS;
 
 fn criterion_benchmark(c: &mut Criterion) {
+  c.bench_function("absolutize", |b| {
+    b.iter(|| {
+      for absolute_path in ABSOLUTE_PATHS {
+        black_box(absolute_path.absolutize());
+      }
+    })
+  });
   let cwd = std::env::current_dir().unwrap();
-    c.bench_function("absolutize", |b| b.iter(absolutize));
-    c.bench_function("absolutize_with", |b| b.iter(|| absolutize_with(&cwd)));
+  c.bench_function("absolutize_with", |b| {
+    b.iter(|| {
+      for absolute_path in ABSOLUTE_PATHS {
+        black_box(absolute_path.absolutize_with(&cwd));
+      }
+    })
+  });
 }
 
 criterion_group!(benches, criterion_benchmark);
