@@ -1,8 +1,11 @@
 use std::{
   borrow::Cow,
+  iter::Peekable,
   path::{Component, Path, PathBuf},
   sync::OnceLock,
 };
+
+use smallvec::SmallVec;
 
 static CURRENT_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -57,7 +60,10 @@ impl<'a> IntoCowPath<'a> for &'a String {
 
 impl<'a> IntoCowPath<'a> for Cow<'a, Path> {
   fn into_cow_path(self) -> Cow<'a, Path> {
-    Cow::Owned(PathBuf::from(self))
+    match self {
+      Cow::Borrowed(path) => Cow::Borrowed(path),
+      Cow::Owned(path) => Cow::Owned(path),
+    }
   }
 }
 
@@ -70,14 +76,13 @@ impl<'a> IntoCowPath<'a> for Cow<'a, str> {
   }
 }
 
-#[inline]
-pub fn component_vec_to_path_buf(components: Vec<Component>) -> PathBuf {
-  components.into_iter().collect()
-}
+// Type alias for SmallVec with stack capacity of 8 (typical path depth)
+pub type ComponentVec<'a> = SmallVec<[Component<'a>; 8]>;
 
-pub fn to_normalized_components<'a>(path: &'a Path) -> Vec<Component<'a>> {
-  let mut components = path.components().peekable();
-  let mut ret = Vec::with_capacity(components.size_hint().0);
+pub fn to_normalized_components<'a>(
+  mut components: Peekable<impl Iterator<Item = Component<'a>>>,
+) -> ComponentVec<'a> {
+  let mut ret = SmallVec::with_capacity(components.size_hint().1.unwrap_or(8));
   if let Some(c @ Component::Prefix(..)) = components.peek() {
     ret.push(*c);
     components.next();
@@ -85,7 +90,7 @@ pub fn to_normalized_components<'a>(path: &'a Path) -> Vec<Component<'a>> {
 
   for component in components {
     match component {
-      Component::Prefix(..) => unreachable!("Unexpected prefix for {:?}", path.display()),
+      Component::Prefix(prefix) => unreachable!("Unexpected prefix for {:?}", prefix),
       Component::RootDir => {
         ret.push(component);
       }

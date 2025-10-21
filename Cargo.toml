@@ -14,6 +14,9 @@ codspeed = ["criterion2/codspeed"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[dependencies]
+smallvec = "1.15"
+
 [dev-dependencies]
 criterion2 = { version = "3", default-features = false }
 
