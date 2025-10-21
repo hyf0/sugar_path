@@ -3,7 +3,7 @@ name = "sugar_path"
 description = "Sugar functions for manipulating paths"
 keywords = ["path", "path-slash", "relative-path"]
 repository = "https://github.com/hyf0/sugar_path"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2024"
 license = "MIT"
 
