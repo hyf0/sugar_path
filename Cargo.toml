@@ -6,6 +6,7 @@ repository = "https://github.com/hyf0/sugar_path"
 version = "1.2.1"
 edition = "2024"
 license = "MIT"
+autobenches = false
 
 [features]
 # Enable `cached_current_dir` will make `SugarPath` to only call `std::env::current_dir` once for all path operations.
