@@ -33,8 +33,8 @@ fn make_sure_dots_are_resolved() {
 fn windows() {
   assert_eq!(pb!(".").absolutize(), get_cwd());
   assert_eq!(pb!("").absolutize(), get_cwd());
-  assert_eq_str!(pb!("c:../a").absolutize(), "c://a");
-  assert_eq_str!(pb!("c:./a").absolutize(), "c://a");
+  assert_eq_str!(pb!("c:../a").absolutize(), "c:\\a");
+  assert_eq_str!(pb!("c:./a").absolutize(), "c:\\a");
   assert_eq!(pb!("a").absolutize(), get_cwd().join("a"));
 
   assert_eq_str!(pb!("c:/ignore").absolutize(), "c:\\ignore");
