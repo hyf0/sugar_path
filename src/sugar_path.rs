@@ -37,7 +37,7 @@ pub trait SugarPath {
   ///   Path::new("C:\\temp\\foo\\bar")
   /// );
   /// ```
-  fn normalize(&self) -> PathBuf;
+  fn normalize(&self) -> Cow<'_, Path>;
 
   /// A shortcut of [SugarPath::absolutize_with] with passing `std::env::current_dir().unwrap()` as the base path.
   ///
