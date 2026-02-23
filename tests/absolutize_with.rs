@@ -90,6 +90,7 @@ fn windows_absolutize_with_unc_paths() {
     "..\\other".absolutize_with("\\\\server\\share\\folder"),
     "\\\\server\\share\\other"
   );
+  // Trailing `\` is the RootDir component (like `C:\`), not a trailing slash.
   assert_eq_str!("\\\\other\\share".absolutize_with("\\\\server\\share"), "\\\\other\\share\\");
 }
 

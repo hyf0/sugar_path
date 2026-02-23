@@ -73,6 +73,8 @@ fn windows_unc() {
   let cases = [
     ("\\\\foo\\bar", "\\\\foo\\bar\\baz", "baz"),
     ("\\\\foo\\bar\\baz-quux", "\\\\foo\\bar\\baz", "..\\baz"),
+    // Different UNC share roots: returns absolute target. Trailing `\` is the
+    // RootDir component (like `C:\`), not a trailing slash.
     ("\\\\foo\\baz-quux", "\\\\foo\\baz", "\\\\foo\\baz\\"),
     ("\\\\foo\\bar\\baz", "\\\\foo\\bar\\baz-quux", "..\\baz-quux"),
     ("\\\\foo\\bar\\baz", "\\\\foo\\bar", ".."),
