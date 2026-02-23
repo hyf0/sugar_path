@@ -90,8 +90,6 @@ fn windows_absolutize_with_unc_paths() {
     "..\\other".absolutize_with("\\\\server\\share\\folder"),
     "\\\\server\\share\\other"
   );
-  // TODO: should be "\\\\other\\share" — normalize() on a UNC root produces
-  // [Prefix, RootDir] which reconstructs with a trailing `\`.
   assert_eq_str!("\\\\other\\share".absolutize_with("\\\\server\\share"), "\\\\other\\share\\");
 }
 
