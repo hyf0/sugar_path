@@ -188,7 +188,7 @@ impl SugarPath for Path {
 /// Check whether a path needs normalization. Returns `false` for already-clean
 /// paths, allowing `normalize()` to return `Cow::Borrowed` with zero allocation.
 #[inline]
-#[cfg(target_family = "unix")]
+#[cfg(not(target_family = "windows"))]
 fn needs_normalization(path: &Path) -> bool {
   let Some(s) = path.to_str() else {
     return true;
