@@ -90,7 +90,7 @@ fn windows_absolutize_with_unc_paths() {
     "..\\other".absolutize_with("\\\\server\\share\\folder"),
     "\\\\server\\share\\other"
   );
-  assert_eq_str!("\\\\other\\share".absolutize_with("\\\\server\\share"), "\\\\other\\share");
+  assert_eq_str!("\\\\other\\share".absolutize_with("\\\\server\\share"), "\\\\other\\share\\");
 }
 
 #[cfg(target_family = "windows")]
