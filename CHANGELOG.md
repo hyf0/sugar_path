@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1](https://github.com/hyf0/sugar_path/compare/v2.0.0...v2.0.1) - 2026-02-23
+
+### Fixed
+
+- support wasm platform
+
+### Other
+
+- polish README.md
+
 ## [2.0.0](https://github.com/hyf0/sugar_path/compare/v1.2.0...v2.0.0) - 2025-10-21
 
 ### Other
