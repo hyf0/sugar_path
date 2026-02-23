@@ -6,6 +6,7 @@ repository = "https://github.com/hyf0/sugar_path"
 version = "1.2.1"
 edition = "2024"
 license = "MIT"
+autobenches = false
 
 [features]
 # Enable `cached_current_dir` will make `SugarPath` to only call `std::env::current_dir` once for all path operations.
@@ -15,6 +16,7 @@ codspeed = ["criterion2/codspeed"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+memchr = "2"
 smallvec = "1.15"
 
 [dev-dependencies]
