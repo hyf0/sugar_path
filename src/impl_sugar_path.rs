@@ -32,6 +32,13 @@ impl SugarPath for Path {
   // - Users could choose to pass a reference or an owned value depending on their use case.
   // - If we accept `PathBuf` only, it may cause unnecessary allocations on case that `self` is already absolute.
   // - If we accept `&Path` only, it may cause unnecessary cloning that users already have an owned value.
+  //
+  // NOTE: we intentionally keep the return lifetime tied to `&self` (not `'a`).
+  // Unifying them (`&'a self, impl IntoCowPath<'a>) -> Cow<'a, ...>`) would allow
+  // borrowing from `base` for noop cases ("", "."), but it constrains callers:
+  // base's borrowed data must outlive self. That's a semver-breaking trade-off
+  // for a narrow benefit — callers needing "".absolutize_with(base) can just
+  // call base.normalize() directly.
   fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> Cow<'_, Path> {
     if self.is_absolute() {
       return self.normalize();

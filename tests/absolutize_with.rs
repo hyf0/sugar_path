@@ -169,7 +169,9 @@ fn unix_dirty_or_relative_paths_are_allocated() {
 #[cfg(target_family = "windows")]
 #[test]
 fn windows_clean_absolute_paths_are_returned_without_allocating() {
-  for path in [r"C:\foo\bar", r"C:\", r"\foo\bar", r"\"] {
+  // On Windows, is_absolute() requires both a prefix (e.g. `C:`) and a root (`\`).
+  // Root-relative paths like `\foo\bar` are NOT absolute.
+  for path in [r"C:\foo\bar", r"C:\"] {
     assert!(
       matches!(p!(path).absolutize_with("C:\\base"), Cow::Borrowed(_)),
       "expected zero-alloc borrow for clean absolute path {:?}",
@@ -186,6 +188,14 @@ fn windows_dirty_or_relative_paths_are_allocated() {
     assert!(
       matches!(p!(path).absolutize_with("C:\\base"), Cow::Owned(_)),
       "expected allocation for relative path {:?}",
+      path,
+    );
+  }
+  // Root-relative (no prefix) — not absolute on Windows, always allocate
+  for path in [r"\", r"\foo\bar"] {
+    assert!(
+      matches!(p!(path).absolutize_with("C:\\base"), Cow::Owned(_)),
+      "expected allocation for root-relative path {:?}",
       path,
     );
   }
