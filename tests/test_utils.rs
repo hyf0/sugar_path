@@ -1,4 +1,14 @@
 #[macro_export]
+macro_rules! assert_eq_str {
+    ($left:expr, $right:expr) => {
+        assert_eq!($left.to_str().unwrap(), $right);
+    };
+    ($left:expr, $right:expr, $($arg:tt)*) => {
+        assert_eq!($left.to_str().unwrap(), $right, $($arg)*);
+    };
+}
+
+#[macro_export]
 macro_rules! pb {
     ( $( $x:expr ),* ) => {
       {
