@@ -40,9 +40,7 @@ fn windows() {
   assert_eq_str!(p!("/foo/../../../bar").normalize(), "\\bar");
   assert_eq_str!(p!("a//b//../b").normalize(), "a\\b");
   assert_eq_str!(p!("a//b//./c").normalize(), "a\\b\\c");
-  // TODO: should be "\\\\server\\share\\dir\\file.ext" — the UNC prefix preserves
-  // original forward slashes from the input instead of normalizing to backslashes.
-  assert_eq_str!(p!("//server/share/dir/file.ext").normalize(), "//server/share\\dir\\file.ext");
+  assert_eq_str!(p!("//server/share/dir/file.ext").normalize(), "\\\\server\\share\\dir\\file.ext");
   assert_eq_str!(p!("/foo/../../../bar").normalize(), "\\bar");
   assert_eq_str!(p!("/a/b/c/../../../x/y/z").normalize(), "\\x\\y\\z");
   assert_eq_str!(p!("C:").normalize(), "C:.");

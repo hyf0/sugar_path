@@ -1,11 +1,8 @@
 use std::{
   borrow::Cow,
-  iter::Peekable,
-  path::{Component, Path, PathBuf},
+  path::{Path, PathBuf},
   sync::OnceLock,
 };
-
-use smallvec::SmallVec;
 
 static CURRENT_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -74,61 +71,4 @@ impl<'a> IntoCowPath<'a> for Cow<'a, str> {
       Cow::Owned(s) => s.into_cow_path(),
     }
   }
-}
-
-// Type alias for SmallVec with stack capacity of 8 (typical path depth)
-pub type ComponentVec<'a> = SmallVec<[Component<'a>; 8]>;
-
-pub fn to_normalized_components<'a>(
-  mut components: Peekable<impl Iterator<Item = Component<'a>>>,
-) -> ComponentVec<'a> {
-  let mut ret = SmallVec::with_capacity(components.size_hint().1.unwrap_or(8));
-  if let Some(c @ Component::Prefix(..)) = components.peek() {
-    ret.push(*c);
-    components.next();
-  };
-
-  for component in components {
-    match component {
-      Component::Prefix(prefix) => unreachable!("Unexpected prefix for {:?}", prefix),
-      Component::RootDir => {
-        ret.push(component);
-      }
-      Component::CurDir => {
-        // ignore
-      }
-      c @ Component::ParentDir => {
-        // So we hit a `..` here. If the previous path segment looks like
-        // - `c:`
-        // - `c:../..`
-        // - `../..`
-        // - ``
-        // We should preserve the `..`
-
-        let need_to_preserve =
-          matches!(ret.last(), None | Some(Component::Prefix(_)) | Some(Component::ParentDir));
-        if need_to_preserve {
-          ret.push(c);
-        } else {
-          let is_last_root_dir = matches!(ret.last(), Some(Component::RootDir));
-          if is_last_root_dir {
-            // If the previous path segment looks like
-            // - `c:/`
-            // - `/`
-            // We need to ignore the `..`
-          } else {
-            // This branch means the previous path segment looks like
-            // - `c:/a/b`
-            // - `/a/b`
-            ret.pop();
-          }
-        }
-      }
-      c @ Component::Normal(_) => {
-        ret.push(c);
-      }
-    }
-  }
-
-  ret
 }

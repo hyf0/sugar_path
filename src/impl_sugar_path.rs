@@ -1,5 +1,7 @@
 use std::{
   borrow::Cow,
+  ffi::OsString,
+  iter::Peekable,
   ops::Deref,
   path::{Component, Path, PathBuf},
 };
@@ -9,17 +11,14 @@ use smallvec::SmallVec;
 
 use crate::{
   SugarPath,
-  utils::{ComponentVec, IntoCowPath, get_current_dir, to_normalized_components},
+  utils::{IntoCowPath, get_current_dir},
 };
 
 type StrVec<'a> = SmallVec<[&'a str; 8]>;
 
 impl SugarPath for Path {
   fn normalize(&self) -> PathBuf {
-    let peekable = self.components().peekable();
-    let mut components = to_normalized_components(peekable);
-
-    normalize_inner(&mut components)
+    normalize_inner(self.components().peekable(), self.as_os_str().len())
   }
 
   fn absolutize(&self) -> PathBuf {
@@ -49,10 +48,9 @@ impl SugarPath for Path {
         // absolute path, get cwd for that drive, or the process cwd if
         // the drive cwd is not available. We're sure the device is not
         // a UNC path at this points, because UNC paths are always absolute.
-        let mut components: ComponentVec = components.collect();
+        let mut components: SmallVec<[Component; 8]> = components.collect();
         components.insert(1, Component::RootDir);
-        let mut components = to_normalized_components(components.into_iter().peekable());
-        normalize_inner(&mut components)
+        normalize_inner(components.into_iter().peekable(), self.as_os_str().len())
       } else {
         base.to_mut().push(self);
         base.normalize()
@@ -107,7 +105,7 @@ impl SugarPath for Path {
         matches!(com, Component::Normal(_) | Component::Prefix(_) | Component::RootDir)
       };
 
-      // Collect components using SmallVec to avoid heap allocation for typical paths
+      // Iterate components without intermediate allocation
       let base_components = base.components().filter(filter_fn);
       let target_components = target.components().filter(filter_fn);
 
@@ -167,19 +165,103 @@ impl SugarPath for Path {
 }
 
 #[inline]
-fn normalize_inner(components: &mut ComponentVec) -> PathBuf {
-  if components.is_empty() {
+fn normalize_inner<'a>(
+  mut components: Peekable<impl Iterator<Item = Component<'a>>>,
+  hint_cap: usize,
+) -> PathBuf {
+  let sep_byte = std::path::MAIN_SEPARATOR as u8;
+  let mut buf: Vec<u8> = Vec::with_capacity(hint_cap);
+  let mut has_root = false;
+  let mut depth: usize = 0; // count of Normal segments currently in buf
+  let mut need_sep = false;
+
+  // --- Prefix (Windows only) ---
+  #[cfg(target_family = "windows")]
+  let prefix_len: usize;
+  #[cfg(target_family = "windows")]
+  {
+    if let Some(Component::Prefix(p)) = components.peek() {
+      if let std::path::Prefix::UNC(server, share) = p.kind() {
+        buf.extend_from_slice(b"\\\\");
+        buf.extend_from_slice(server.as_encoded_bytes());
+        buf.push(b'\\');
+        buf.extend_from_slice(share.as_encoded_bytes());
+      } else {
+        buf.extend_from_slice(p.as_os_str().as_encoded_bytes());
+      }
+      components.next();
+    }
+    prefix_len = buf.len();
+  }
+
+  // --- RootDir ---
+  if matches!(components.peek(), Some(Component::RootDir)) {
+    buf.push(sep_byte);
+    has_root = true;
+    components.next();
+  }
+
+  let root_end = buf.len();
+
+  // --- Remaining components ---
+  for component in components {
+    match component {
+      Component::Prefix(prefix) => unreachable!("Unexpected prefix for {:?}", prefix),
+      Component::RootDir => unreachable!("Unexpected RootDir after initial position"),
+      Component::CurDir => {}
+      Component::ParentDir => {
+        if depth > 0 {
+          // Roll back the last Normal segment using memrchr.
+          let search_region = &buf[root_end..];
+          if let Some(pos) = memrchr(sep_byte, search_region) {
+            buf.truncate(root_end + pos);
+          } else {
+            buf.truncate(root_end);
+          }
+          depth -= 1;
+          need_sep = buf.len() > root_end;
+        } else if !has_root {
+          // Relative path going above start: write ".." literally
+          if need_sep {
+            buf.push(sep_byte);
+          }
+          buf.extend_from_slice(b"..");
+          need_sep = true;
+        }
+        // else: has_root && depth == 0 → ignore (can't go above root)
+      }
+      Component::Normal(s) => {
+        if need_sep {
+          buf.push(sep_byte);
+        }
+        buf.extend_from_slice(s.as_encoded_bytes());
+        depth += 1;
+        need_sep = true;
+      }
+    }
+  }
+
+  // --- Empty result → "." ---
+  if buf.is_empty() {
     return PathBuf::from(".");
   }
 
-  if cfg!(target_family = "windows")
-    && components.len() == 1
-    && matches!(components[0], Component::Prefix(_))
-  {
-    components.push(Component::CurDir)
+  // --- Prefix-only: append trailing separator or CurDir ---
+  #[cfg(target_family = "windows")]
+  if buf.len() == prefix_len && prefix_len > 0 {
+    // Determine if the prefix is UNC by checking for leading "\\"
+    if buf.len() >= 2 && buf[0] == b'\\' && buf[1] == b'\\' {
+      buf.push(b'\\');
+    } else {
+      buf.push(b'.');
+    }
   }
 
-  components.iter().collect()
+  // SAFETY: `buf` was built entirely from:
+  // - encoded bytes of OsStr components (valid platform encoding)
+  // - ASCII separator bytes and ASCII '.' characters
+  // This preserves the encoding invariants required by OsString.
+  PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) })
 }
 
 impl<T: Deref<Target = str>> SugarPath for T {
