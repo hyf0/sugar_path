@@ -80,6 +80,33 @@ pub static ABSOLUTE_PATHS: &[&str] = &[
   "/var/log/applications/production/cluster-01/node-03/services/api-gateway/2024/01/15/access.log",
 ];
 
+/// Clean relative paths (no `.`/`..`/`//`/trailing `/`).
+/// Used to benchmark absolutize on relative inputs (always allocates).
+#[allow(dead_code)]
+pub static RELATIVE_CLEAN: &[&str] = &[
+  "foo",
+  "foo/bar",
+  "foo/bar/baz",
+  "src/main.rs",
+  "src/lib/utils/helpers.rs",
+  "node_modules/@scope/package/dist/index.js",
+  "a/b/c/d/e/f/g/h",
+  "a/b/c/d/e/f/g/h/i/j",
+  "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o",
+];
+
+/// Absolute paths that need normalization (contain `.`/`..`/`//`/trailing `/`).
+/// Used to benchmark absolutize on dirty absolute inputs.
+#[allow(dead_code)]
+pub static DIRTY_ABSOLUTE: &[&str] = &[
+  "/foo/../../../bar",
+  "/a/b/c/../../../x/y/z",
+  "///..//./foo/.//bar",
+  "/a/b/c/../../../",
+  "/foo/bar//baz/asdf/quux/..",
+  "/usr/local/./bin/../lib/./share",
+];
+
 /// Paths that are already in normalized form on Unix.
 /// No `.` or `..` components, no `//` doubled separators, no trailing `/`.
 /// Used to benchmark the zero-allocation fast path.
