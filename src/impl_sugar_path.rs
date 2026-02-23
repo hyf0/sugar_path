@@ -483,6 +483,7 @@ mod tests {
     tmp.absolutize_with(cow_str);
   }
 
+  #[cfg(target_family = "unix")]
   #[test]
   fn normalize() {
     assert_eq_str!(Path::new("/foo/../../../bar").normalize(), "/bar");
