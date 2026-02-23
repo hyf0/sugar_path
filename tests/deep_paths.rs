@@ -4,6 +4,7 @@ use std::path::Path;
 use sugar_path::SugarPath;
 mod test_utils;
 
+#[cfg(target_family = "unix")]
 #[test]
 fn test_normalize_deep_path() {
   // Create a path with more than 8 components (SmallVec inline capacity)
@@ -22,6 +23,7 @@ fn test_normalize_deep_path() {
   assert_eq_str!(normalized, "a/b/d/e/g/h/j/k/m/n/o/p");
 }
 
+#[cfg(target_family = "unix")]
 #[test]
 fn test_relative_deep_paths() {
   // Test relative path calculation with more than 8 components
@@ -126,6 +128,7 @@ fn test_extreme_depth() {
   assert_eq!(normalized.components().count(), 25);
 }
 
+#[cfg(target_family = "unix")]
 #[test]
 fn test_stress_smallvec_spillover() {
   // Create paths that will definitely spill over SmallVec's inline capacity
@@ -168,6 +171,7 @@ fn test_windows_deep_paths() {
   }
 }
 
+#[cfg(target_family = "unix")]
 #[test]
 fn test_relative_with_common_deep_prefix() {
   // Test paths that share a deep common prefix
