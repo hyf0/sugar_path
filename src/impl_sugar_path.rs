@@ -436,6 +436,7 @@ mod tests {
 
   use super::SugarPath;
 
+  #[allow(unused_macros)]
   macro_rules! assert_eq_str {
     ($left:expr, $right:expr) => {
       assert_eq!($left.to_str().unwrap(), $right);
