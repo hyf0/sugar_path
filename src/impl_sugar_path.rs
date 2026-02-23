@@ -436,6 +436,15 @@ mod tests {
 
   use super::SugarPath;
 
+  macro_rules! assert_eq_str {
+    ($left:expr, $right:expr) => {
+      assert_eq!($left.to_str().unwrap(), $right);
+    };
+    ($left:expr, $right:expr, $($arg:tt)*) => {
+      assert_eq!($left.to_str().unwrap(), $right, $($arg)*);
+    };
+  }
+
   #[test]
   fn _test_as_path() {
     let str = "";
@@ -476,40 +485,34 @@ mod tests {
 
   #[test]
   fn normalize() {
-    assert_eq!(Path::new("/foo/../../../bar").normalize(), Path::new("/bar"));
-    assert_eq!(Path::new("a//b//../b").normalize(), Path::new("a/b"));
-    assert_eq!(Path::new("/foo/../../../bar").normalize(), Path::new("/bar"));
-    assert_eq!(Path::new("a//b//./c").normalize(), Path::new("a/b/c"));
-    assert_eq!(Path::new("a//b//.").normalize(), Path::new("a/b"));
-    assert_eq!(Path::new("/a/b/c/../../../x/y/z").normalize(), Path::new("/x/y/z"));
-    assert_eq!(Path::new("///..//./foo/.//bar").normalize(), Path::new("/foo/bar"));
-    assert_eq!(Path::new("bar/foo../../").normalize(), Path::new("bar/"));
-    assert_eq!(Path::new("bar/foo../..").normalize(), Path::new("bar"));
-    assert_eq!(Path::new("bar/foo../../baz").normalize(), Path::new("bar/baz"));
-    assert_eq!(Path::new("bar/foo../").normalize(), Path::new("bar/foo../"));
-    assert_eq!(Path::new("bar/foo..").normalize(), Path::new("bar/foo.."));
-    assert_eq!(Path::new("../foo../../../bar").normalize(), Path::new("../../bar"));
-    assert_eq!(Path::new("../foo../../../bar").normalize(), Path::new("../../bar"));
-    assert_eq!(Path::new("../.../.././.../../../bar").normalize(), Path::new("../../bar"));
-    assert_eq!(Path::new("../.../.././.../../../bar").normalize(), Path::new("../../bar"));
-    assert_eq!(Path::new("../../../foo/../../../bar").normalize(), Path::new("../../../../../bar"));
-    assert_eq!(
-      Path::new("../../../foo/../../../bar/../../").normalize(),
-      Path::new("../../../../../../")
-    );
-    assert_eq!(
-      Path::new("../foobar/barfoo/foo/../../../bar/../../").normalize(),
-      Path::new("../../")
-    );
-    assert_eq!(
+    assert_eq_str!(Path::new("/foo/../../../bar").normalize(), "/bar");
+    assert_eq_str!(Path::new("a//b//../b").normalize(), "a/b");
+    assert_eq_str!(Path::new("/foo/../../../bar").normalize(), "/bar");
+    assert_eq_str!(Path::new("a//b//./c").normalize(), "a/b/c");
+    assert_eq_str!(Path::new("a//b//.").normalize(), "a/b");
+    assert_eq_str!(Path::new("/a/b/c/../../../x/y/z").normalize(), "/x/y/z");
+    assert_eq_str!(Path::new("///..//./foo/.//bar").normalize(), "/foo/bar");
+    assert_eq_str!(Path::new("bar/foo../../").normalize(), "bar");
+    assert_eq_str!(Path::new("bar/foo../..").normalize(), "bar");
+    assert_eq_str!(Path::new("bar/foo../../baz").normalize(), "bar/baz");
+    assert_eq_str!(Path::new("bar/foo../").normalize(), "bar/foo..");
+    assert_eq_str!(Path::new("bar/foo..").normalize(), "bar/foo..");
+    assert_eq_str!(Path::new("../foo../../../bar").normalize(), "../../bar");
+    assert_eq_str!(Path::new("../foo../../../bar").normalize(), "../../bar");
+    assert_eq_str!(Path::new("../.../.././.../../../bar").normalize(), "../../bar");
+    assert_eq_str!(Path::new("../.../.././.../../../bar").normalize(), "../../bar");
+    assert_eq_str!(Path::new("../../../foo/../../../bar").normalize(), "../../../../../bar");
+    assert_eq_str!(Path::new("../../../foo/../../../bar/../../").normalize(), "../../../../../..");
+    assert_eq_str!(Path::new("../foobar/barfoo/foo/../../../bar/../../").normalize(), "../..");
+    assert_eq_str!(
       Path::new("../.../../foobar/../../../bar/../../baz").normalize(),
-      Path::new("../../../../baz")
+      "../../../../baz"
     );
-    assert_eq!(Path::new("foo/bar\\baz").normalize(), Path::new("foo/bar\\baz"));
-    assert_eq!(Path::new("/a/b/c/../../../").normalize(), Path::new("/"));
-    assert_eq!(Path::new("a/b/c/../../../").normalize(), Path::new("."));
-    assert_eq!(Path::new("a/b/c/../../..").normalize(), Path::new("."));
+    assert_eq_str!(Path::new("foo/bar\\baz").normalize(), "foo/bar\\baz");
+    assert_eq_str!(Path::new("/a/b/c/../../../").normalize(), "/");
+    assert_eq_str!(Path::new("a/b/c/../../../").normalize(), ".");
+    assert_eq_str!(Path::new("a/b/c/../../..").normalize(), ".");
 
-    assert_eq!(Path::new("").normalize(), Path::new("."));
+    assert_eq_str!(Path::new("").normalize(), ".");
   }
 }

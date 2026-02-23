@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use sugar_path::SugarPath;
+mod test_utils;
 
 #[cfg(target_family = "unix")]
 #[test]
@@ -21,9 +22,9 @@ fn unix() {
     ("/page1/page2/foo", "/", "../../.."),
   ];
   cases.into_iter().for_each(|(to, target, right)| {
-    assert_eq!(
+    assert_eq_str!(
       Path::new(target).relative(to),
-      Path::new(right),
+      right,
       "for input target: {} base: {}",
       target,
       to
@@ -56,9 +57,9 @@ fn windows() {
     ("C:\\baz", "C:\\baz-quux", "..\\baz-quux"),
   ];
   cases.into_iter().for_each(|(base, target, right)| {
-    assert_eq!(
+    assert_eq_str!(
       Path::new(target).relative(Path::new(base)),
-      Path::new(right),
+      right,
       "for input target: {} base: {}",
       target,
       base
@@ -77,9 +78,9 @@ fn windows_unc() {
     ("\\\\foo\\bar\\baz", "\\\\foo\\bar", ".."),
   ];
   cases.into_iter().for_each(|(base, target, right)| {
-    assert_eq!(
+    assert_eq_str!(
       Path::new(target).relative(Path::new(base)),
-      Path::new(right),
+      right,
       "for input target: {} base: {}",
       target,
       base
