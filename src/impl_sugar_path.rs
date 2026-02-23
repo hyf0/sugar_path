@@ -17,7 +17,10 @@ use crate::{
 type StrVec<'a> = SmallVec<[&'a str; 8]>;
 
 impl SugarPath for Path {
-  fn normalize(&self) -> PathBuf {
+  fn normalize(&self) -> Cow<'_, Path> {
+    if !needs_normalization(self) {
+      return Cow::Borrowed(self);
+    }
     normalize_inner(self.components().peekable(), self.as_os_str().len())
   }
 
@@ -31,7 +34,7 @@ impl SugarPath for Path {
   // - If we accept `&Path` only, it may cause unnecessary cloning that users already have an owned value.
   fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> PathBuf {
     if self.is_absolute() {
-      return self.normalize();
+      return self.normalize().into_owned();
     }
 
     let base: Cow<'a, Path> = base.into_cow_path();
@@ -50,14 +53,14 @@ impl SugarPath for Path {
         // a UNC path at this points, because UNC paths are always absolute.
         let mut components: SmallVec<[Component; 8]> = components.collect();
         components.insert(1, Component::RootDir);
-        normalize_inner(components.into_iter().peekable(), self.as_os_str().len())
+        normalize_inner(components.into_iter().peekable(), self.as_os_str().len()).into_owned()
       } else {
         base.to_mut().push(self);
-        base.normalize()
+        base.normalize().into_owned()
       }
     } else {
       base.to_mut().push(self);
-      base.normalize()
+      base.normalize().into_owned()
     }
   }
 
@@ -84,7 +87,7 @@ impl SugarPath for Path {
             return PathBuf::from(result.replace('/', "\\"));
           }
           // Different roots: return normalized target (no current_dir needed)
-          return self.normalize();
+          return self.normalize().into_owned();
         }
         // Unrecognized prefix format: fall through to component-based path
       }
@@ -95,8 +98,12 @@ impl SugarPath for Path {
     }
 
     // Slow path: avoid current_dir() syscall for already-absolute paths
-    let base = if base_ref.is_absolute() { base_ref.normalize() } else { base_ref.absolutize() };
-    let target = if self.is_absolute() { self.normalize() } else { self.absolutize() };
+    let base = if base_ref.is_absolute() {
+      base_ref.normalize().into_owned()
+    } else {
+      base_ref.absolutize()
+    };
+    let target = if self.is_absolute() { self.normalize().into_owned() } else { self.absolutize() };
     if base == target {
       PathBuf::new()
     } else {
@@ -164,11 +171,148 @@ impl SugarPath for Path {
   }
 }
 
+/// Check whether a path needs normalization. Returns `false` for already-clean
+/// paths, allowing `normalize()` to return `Cow::Borrowed` with zero allocation.
+#[inline]
+#[cfg(target_family = "unix")]
+fn needs_normalization(path: &Path) -> bool {
+  let Some(s) = path.to_str() else {
+    return true;
+  };
+  let bytes = s.as_bytes();
+  if bytes.is_empty() {
+    return true;
+  }
+  // Leading `.` or `..` component (but not `...` or `.foo` which are normal filenames)
+  if bytes[0] == b'.' {
+    if bytes.len() == 1 || bytes[1] == b'/' {
+      return true;
+    }
+    if bytes[1] == b'.' && (bytes.len() == 2 || bytes[2] == b'/') {
+      return true;
+    }
+  }
+  // Trailing `/` (unless path is exactly `/`)
+  if bytes.len() > 1 && bytes[bytes.len() - 1] == b'/' {
+    return true;
+  }
+  // memchr scan for `//`, `/.`, `/..`
+  let mut offset = 0;
+  while let Some(pos) = memchr(b'/', &bytes[offset..]) {
+    let slash = offset + pos;
+    let next = slash + 1;
+    if next < bytes.len() {
+      let b = bytes[next];
+      // `//` — consecutive slashes
+      if b == b'/' {
+        return true;
+      }
+      // `/.` — could be `/.` or `/..`
+      if b == b'.' {
+        let after_dot = next + 1;
+        // "/." at end or "/./"
+        if after_dot >= bytes.len() || bytes[after_dot] == b'/' {
+          return true;
+        }
+        // "/.." at end or "/../"
+        if bytes[after_dot] == b'.'
+          && (after_dot + 1 >= bytes.len() || bytes[after_dot + 1] == b'/')
+        {
+          return true;
+        }
+      }
+    }
+    offset = next;
+  }
+  false
+}
+
+/// Check whether a path needs normalization (Windows variant).
+#[inline]
+#[cfg(target_family = "windows")]
+fn needs_normalization(path: &Path) -> bool {
+  let Some(s) = path.to_str() else {
+    return true;
+  };
+  let bytes = s.as_bytes();
+  if bytes.is_empty() {
+    return true;
+  }
+  // Any forward slash means normalization is needed (gets converted to `\`)
+  if memchr(b'/', bytes).is_some() {
+    return true;
+  }
+  // UNC prefix `\\` at start — always bail out to normalizer
+  if bytes.len() >= 2 && bytes[0] == b'\\' && bytes[1] == b'\\' {
+    return true;
+  }
+  // Bare drive `X:` without trailing `\` normalizes to `X:.`
+  // Also `X:foo` (drive-relative) needs normalization
+  if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+    if bytes.len() == 2 {
+      return true; // bare `C:`
+    }
+    if bytes[2] != b'\\' {
+      return true; // `C:foo` (drive-relative, no root)
+    }
+  }
+  // Leading `.` or `..` component (but not `...` or `.foo` which are normal filenames)
+  if bytes[0] == b'.' {
+    if bytes.len() == 1 || bytes[1] == b'\\' {
+      return true;
+    }
+    if bytes[1] == b'.' && (bytes.len() == 2 || bytes[2] == b'\\') {
+      return true;
+    }
+  }
+  // Trailing `\` (unless path is `\` alone or `X:\`)
+  if bytes[bytes.len() - 1] == b'\\' {
+    // `\` alone is clean
+    if bytes.len() == 1 {
+      return false;
+    }
+    // `X:\` is clean
+    if bytes.len() == 3 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+      return false;
+    }
+    return true;
+  }
+  // memchr scan for `\\` (consecutive), `\.`, `\..`
+  let mut offset = 0;
+  while let Some(pos) = memchr(b'\\', &bytes[offset..]) {
+    let slash = offset + pos;
+    let next = slash + 1;
+    if next < bytes.len() {
+      let b = bytes[next];
+      // `\\` — consecutive separators
+      if b == b'\\' {
+        return true;
+      }
+      // `\.` — could be `\.` or `\..`
+      if b == b'.' {
+        let after_dot = next + 1;
+        // "\." at end or "\.\"
+        if after_dot >= bytes.len() || bytes[after_dot] == b'\\' {
+          return true;
+        }
+        // "\.." at end or "\..\"
+        if bytes[after_dot] == b'.'
+          && (after_dot + 1 >= bytes.len() || bytes[after_dot + 1] == b'\\')
+        {
+          return true;
+        }
+      }
+    }
+    offset = next;
+  }
+  false
+}
+
 #[inline]
 fn normalize_inner<'a>(
   mut components: Peekable<impl Iterator<Item = Component<'a>>>,
   hint_cap: usize,
-) -> PathBuf {
+) -> Cow<'a, Path> {
   let sep_byte = std::path::MAIN_SEPARATOR as u8;
   let mut buf: Vec<u8> = Vec::with_capacity(hint_cap);
   let mut has_root = false;
@@ -243,7 +387,7 @@ fn normalize_inner<'a>(
 
   // --- Empty result → "." ---
   if buf.is_empty() {
-    return PathBuf::from(".");
+    return Cow::Borrowed(Path::new("."));
   }
 
   // --- Prefix-only: append trailing separator or CurDir ---
@@ -261,11 +405,11 @@ fn normalize_inner<'a>(
   // - encoded bytes of OsStr components (valid platform encoding)
   // - ASCII separator bytes and ASCII '.' characters
   // This preserves the encoding invariants required by OsString.
-  PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) })
+  Cow::Owned(PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) }))
 }
 
 impl<T: Deref<Target = str>> SugarPath for T {
-  fn normalize(&self) -> PathBuf {
+  fn normalize(&self) -> Cow<'_, Path> {
     self.as_path().normalize()
   }
 

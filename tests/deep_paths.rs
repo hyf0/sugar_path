@@ -112,7 +112,8 @@ fn test_extreme_depth() {
   let deep_path = path_parts.join("/");
 
   // Test normalize
-  let normalized = deep_path.as_str().normalize();
+  let deep_str = deep_path.as_str();
+  let normalized = deep_str.normalize();
   assert_eq!(normalized.components().count(), 25);
 
   // Add some dots and test again
@@ -124,7 +125,8 @@ fn test_extreme_depth() {
     }
   }
   let deep_path_dots = path_with_dots.join("/");
-  let normalized = deep_path_dots.as_str().normalize();
+  let deep_dots_str = deep_path_dots.as_str();
+  let normalized = deep_dots_str.normalize();
   assert_eq!(normalized.components().count(), 25);
 }
 

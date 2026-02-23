@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use sugar_path::SugarPath;
 mod test_utils;
 
@@ -66,4 +67,70 @@ fn windows() {
   assert_eq_str!(p!("../foobar/barfoo/foo/../../../bar/../../").normalize(), "..\\..");
   assert_eq_str!(p!("../.../../foobar/../../../bar/../../baz").normalize(), "..\\..\\..\\..\\baz");
   assert_eq_str!(p!("foo/bar\\baz").normalize(), "foo\\bar\\baz");
+}
+
+#[cfg(target_family = "unix")]
+#[test]
+fn unix_clean_paths_are_returned_without_allocating() {
+  for path in
+    ["", ".", "/", "/usr/local/bin", "foo/bar/baz", "foo", "/home/user/file.txt", "...", ".foo"]
+  {
+    assert!(
+      matches!(p!(path).normalize(), Cow::Borrowed(_)),
+      "expected zero-alloc borrow for clean path {:?}",
+      path,
+    );
+  }
+}
+
+#[cfg(target_family = "unix")]
+#[test]
+fn unix_dirty_paths_are_allocated_and_normalized() {
+  for path in
+    ["./foo", "..", "../foo", "foo/../bar", "foo//bar", "foo/./bar", "foo/bar/", "/foo/../bar"]
+  {
+    assert!(
+      matches!(p!(path).normalize(), Cow::Owned(_)),
+      "expected new allocation for dirty path {:?}",
+      path,
+    );
+  }
+}
+
+#[cfg(target_family = "windows")]
+#[test]
+fn windows_clean_paths_are_returned_without_allocating() {
+  for path in
+    [r"C:\foo\bar", r"C:\", r"\foo\bar", r"foo\bar\baz", "foo", r"\", "...", ".foo", "", "."]
+  {
+    assert!(
+      matches!(p!(path).normalize(), Cow::Borrowed(_)),
+      "expected zero-alloc borrow for clean path {:?}",
+      path,
+    );
+  }
+}
+
+#[cfg(target_family = "windows")]
+#[test]
+fn windows_dirty_paths_are_allocated_and_normalized() {
+  for path in [
+    "C:",
+    "C:/foo",
+    r"foo\\bar",
+    r"foo\..\bar",
+    r"\\server\share\dir",
+    "..",
+    r".\foo",
+    r"..\foo",
+    r"foo\bar\",
+    r"foo\.\bar",
+    "C:foo",
+  ] {
+    assert!(
+      matches!(p!(path).normalize(), Cow::Owned(_)),
+      "expected new allocation for dirty path {:?}",
+      path,
+    );
+  }
 }
