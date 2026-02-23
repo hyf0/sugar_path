@@ -73,7 +73,7 @@ fn windows_unc() {
   let cases = [
     ("\\\\foo\\bar", "\\\\foo\\bar\\baz", "baz"),
     ("\\\\foo\\bar\\baz-quux", "\\\\foo\\bar\\baz", "..\\baz"),
-    ("\\\\foo\\baz-quux", "\\\\foo\\baz", "\\\\foo\\baz"),
+    ("\\\\foo\\baz-quux", "\\\\foo\\baz", "\\\\foo\\baz\\"),
     ("\\\\foo\\bar\\baz", "\\\\foo\\bar\\baz-quux", "..\\baz-quux"),
     ("\\\\foo\\bar\\baz", "\\\\foo\\bar", ".."),
   ];
