@@ -24,7 +24,7 @@ impl SugarPath for Path {
     normalize_inner(self.components().peekable(), self.as_os_str().len())
   }
 
-  fn absolutize(&self) -> PathBuf {
+  fn absolutize(&self) -> Cow<'_, Path> {
     self.absolutize_with(get_current_dir())
   }
 
@@ -32,13 +32,21 @@ impl SugarPath for Path {
   // - Users could choose to pass a reference or an owned value depending on their use case.
   // - If we accept `PathBuf` only, it may cause unnecessary allocations on case that `self` is already absolute.
   // - If we accept `&Path` only, it may cause unnecessary cloning that users already have an owned value.
-  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> PathBuf {
+  //
+  // NOTE: we intentionally keep the return lifetime tied to `&self` (not `'a`).
+  // Unifying them (`&'a self, impl IntoCowPath<'a>) -> Cow<'a, ...>`) would allow
+  // borrowing from `base` for noop cases ("", "."), but it constrains callers:
+  // base's borrowed data must outlive self. That's a semver-breaking trade-off
+  // for a narrow benefit — callers needing "".absolutize_with(base) can just
+  // call base.normalize() directly.
+  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> Cow<'_, Path> {
     if self.is_absolute() {
-      return self.normalize().into_owned();
+      return self.normalize();
     }
 
     let base: Cow<'a, Path> = base.into_cow_path();
-    let mut base = if base.is_absolute() { base } else { Cow::Owned(base.absolutize()) };
+    let mut base =
+      if base.is_absolute() { base } else { Cow::Owned(base.absolutize().into_owned()) };
 
     if cfg!(target_family = "windows") {
       // Consider c:
@@ -53,14 +61,16 @@ impl SugarPath for Path {
         // a UNC path at this points, because UNC paths are always absolute.
         let mut components: SmallVec<[Component; 8]> = components.collect();
         components.insert(1, Component::RootDir);
-        normalize_inner(components.into_iter().peekable(), self.as_os_str().len()).into_owned()
+        Cow::Owned(
+          normalize_inner(components.into_iter().peekable(), self.as_os_str().len()).into_owned(),
+        )
       } else {
         base.to_mut().push(self);
-        base.normalize().into_owned()
+        Cow::Owned(base.normalize().into_owned())
       }
     } else {
       base.to_mut().push(self);
-      base.normalize().into_owned()
+      Cow::Owned(base.normalize().into_owned())
     }
   }
 
@@ -101,9 +111,13 @@ impl SugarPath for Path {
     let base = if base_ref.is_absolute() {
       base_ref.normalize().into_owned()
     } else {
-      base_ref.absolutize()
+      base_ref.absolutize().into_owned()
     };
-    let target = if self.is_absolute() { self.normalize().into_owned() } else { self.absolutize() };
+    let target = if self.is_absolute() {
+      self.normalize().into_owned()
+    } else {
+      self.absolutize().into_owned()
+    };
     if base == target {
       PathBuf::new()
     } else {
@@ -413,11 +427,11 @@ impl<T: Deref<Target = str>> SugarPath for T {
     self.as_path().normalize()
   }
 
-  fn absolutize(&self) -> PathBuf {
+  fn absolutize(&self) -> Cow<'_, Path> {
     self.as_path().absolutize()
   }
 
-  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> PathBuf {
+  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> Cow<'_, Path> {
     self.as_path().absolutize_with(base)
   }
 

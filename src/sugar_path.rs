@@ -48,7 +48,7 @@ pub trait SugarPath {
   /// let cwd = std::env::current_dir().unwrap();
   /// assert_eq!("hello/world".absolutize(), cwd.join("hello").join("world"));
   /// ```
-  fn absolutize(&self) -> PathBuf;
+  fn absolutize(&self) -> Cow<'_, Path>;
 
   /// Allows you to absolutize the given path with the base path.
   ///
@@ -67,7 +67,7 @@ pub trait SugarPath {
   ///   assert_eq!("..\\world".absolutize_with("C:\\hello"), "C:\\world".as_path());
   /// }
   /// ```
-  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> PathBuf;
+  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> Cow<'_, Path>;
 
   ///
   /// ```rust
