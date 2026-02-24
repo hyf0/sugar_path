@@ -58,16 +58,17 @@
 //! - [SugarPath::absolutize_with] allows you to absolutize the given path with the base path.
 //!
 //! ```rust
+//! use std::borrow::Cow;
 //! use sugar_path::SugarPath;
 //! #[cfg(target_family = "unix")]
 //! {
-//!   assert_eq!("./world".absolutize_with("/hello"), "/hello/world".as_path());
-//!   assert_eq!("../world".absolutize_with("/hello"), "/world".as_path());
+//!   assert_eq!("./world".absolutize_with(Cow::Borrowed("/hello".as_path())), "/hello/world".as_path());
+//!   assert_eq!("../world".absolutize_with(Cow::Borrowed("/hello".as_path())), "/world".as_path());
 //! }
 //! #[cfg(target_family = "windows")]
 //! {
-//!  assert_eq!(".\\world".absolutize_with("C:\\hello"), "C:\\hello\\world".as_path());
-//!   assert_eq!("..\\world".absolutize_with("C:\\hello"), "C:\\world".as_path());
+//!   assert_eq!(".\\world".absolutize_with(Cow::Borrowed("C:\\hello".as_path())), "C:\\hello\\world".as_path());
+//!   assert_eq!("..\\world".absolutize_with(Cow::Borrowed("C:\\hello".as_path())), "C:\\world".as_path());
 //! }
 //! ```
 //!

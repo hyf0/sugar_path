@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::hint::black_box;
 use std::path::Path;
 
@@ -21,7 +22,7 @@ fn criterion_benchmark(c: &mut Criterion) {
   c.bench_function("absolutize_with", |b| {
     b.iter(|| {
       for absolute_path in ABSOLUTE_PATHS {
-        black_box(absolute_path.absolutize_with(&cwd));
+        black_box(absolute_path.absolutize_with(Cow::Borrowed(cwd.as_path())));
       }
     })
   });
@@ -37,7 +38,7 @@ fn criterion_benchmark(c: &mut Criterion) {
   c.bench_function("absolutize_with_already_clean_absolute", |b| {
     b.iter(|| {
       for path in ABSOLUTE_PATHS {
-        black_box(Path::new(path).absolutize_with(&cwd));
+        black_box(Path::new(path).absolutize_with(Cow::Borrowed(cwd.as_path())));
       }
     })
   });
@@ -53,7 +54,7 @@ fn criterion_benchmark(c: &mut Criterion) {
   c.bench_function("absolutize_with_relative_paths", |b| {
     b.iter(|| {
       for path in RELATIVE_CLEAN {
-        black_box(Path::new(path).absolutize_with(&cwd));
+        black_box(Path::new(path).absolutize_with(Cow::Borrowed(cwd.as_path())));
       }
     })
   });

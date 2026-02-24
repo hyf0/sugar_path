@@ -9,10 +9,7 @@ use std::{
 use memchr::{memchr, memrchr};
 use smallvec::SmallVec;
 
-use crate::{
-  SugarPath,
-  utils::{IntoCowPath, get_current_dir},
-};
+use crate::{SugarPath, utils::get_current_dir};
 
 type StrVec<'a> = SmallVec<[&'a str; 8]>;
 
@@ -28,23 +25,16 @@ impl SugarPath for Path {
     self.absolutize_with(get_current_dir())
   }
 
-  // Using `Cow` is on purpose.
-  // - Users could choose to pass a reference or an owned value depending on their use case.
-  // - If we accept `PathBuf` only, it may cause unnecessary allocations on case that `self` is already absolute.
-  // - If we accept `&Path` only, it may cause unnecessary cloning that users already have an owned value.
-  //
-  // NOTE: we intentionally keep the return lifetime tied to `&self` (not `'a`).
-  // Unifying them (`&'a self, impl IntoCowPath<'a>) -> Cow<'a, ...>`) would allow
+  // NOTE: the return lifetime is tied to `&self` (not `'a`).
+  // Unifying them (`&'a self, Cow<'a, Path>) -> Cow<'a, ...>`) would allow
   // borrowing from `base` for noop cases ("", "."), but it constrains callers:
-  // base's borrowed data must outlive self. That's a semver-breaking trade-off
-  // for a narrow benefit — callers needing "".absolutize_with(base) can just
-  // call base.normalize() directly.
-  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> Cow<'_, Path> {
+  // base's borrowed data must outlive self. Callers needing "".absolutize_with(base)
+  // can just call base.normalize() directly.
+  fn absolutize_with<'a>(&self, base: Cow<'a, Path>) -> Cow<'_, Path> {
     if self.is_absolute() {
       return self.normalize();
     }
 
-    let base: Cow<'a, Path> = base.into_cow_path();
     let mut base =
       if base.is_absolute() { base } else { Cow::Owned(base.absolutize().into_owned()) };
 
@@ -431,7 +421,7 @@ impl<T: Deref<Target = str>> SugarPath for T {
     self.as_path().absolutize()
   }
 
-  fn absolutize_with<'a>(&self, base: impl IntoCowPath<'a>) -> Cow<'_, Path> {
+  fn absolutize_with<'a>(&self, base: Cow<'a, Path>) -> Cow<'_, Path> {
     self.as_path().absolutize_with(base)
   }
 
@@ -701,27 +691,8 @@ mod tests {
   #[test]
   fn _test_absolutize_with() {
     let tmp = "";
-
-    let str = "";
-    tmp.absolutize_with(str);
-
-    let string = String::new();
-    tmp.absolutize_with(string);
-
-    let ref_string = &String::new();
-    tmp.absolutize_with(ref_string);
-
-    let path = Path::new("");
-    tmp.absolutize_with(path);
-
-    let path_buf = PathBuf::new();
-    tmp.absolutize_with(path_buf);
-
-    let cow_path = Cow::Borrowed(Path::new(""));
-    tmp.absolutize_with(cow_path);
-
-    let cow_str = Cow::Borrowed("");
-    tmp.absolutize_with(cow_str);
+    tmp.absolutize_with(Cow::Borrowed("".as_path()));
+    tmp.absolutize_with(Cow::Owned(PathBuf::new()));
   }
 
   #[cfg(target_family = "unix")]

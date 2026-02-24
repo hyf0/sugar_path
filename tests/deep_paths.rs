@@ -1,5 +1,6 @@
 //! Tests for paths with many components to verify SmallVec spills to heap correctly
 
+use std::borrow::Cow;
 use std::path::Path;
 use sugar_path::SugarPath;
 mod test_utils;
@@ -53,12 +54,12 @@ fn test_absolutize_deep_paths() {
     let base = "/root/level1/level2/level3/level4/level5/level6/level7/level8/level9";
     let relative = "../../../../../../../../../../deep1/deep2/deep3/deep4/deep5";
 
-    let absolute = relative.absolutize_with(base);
+    let absolute = relative.absolutize_with(Cow::Borrowed(base.as_path()));
     assert_eq_str!(absolute, "/deep1/deep2/deep3/deep4/deep5");
 
     // Test with current directory dots in deep path
     let deep_relative = "./sub1/./sub2/./sub3/./sub4/./sub5/./sub6/./sub7/./sub8/./sub9/./sub10";
-    let absolute = deep_relative.absolutize_with(base);
+    let absolute = deep_relative.absolutize_with(Cow::Borrowed(base.as_path()));
     assert_eq_str!(
       absolute,
       "/root/level1/level2/level3/level4/level5/level6/level7/level8/level9/sub1/sub2/sub3/sub4/sub5/sub6/sub7/sub8/sub9/sub10"
@@ -70,13 +71,13 @@ fn test_absolutize_deep_paths() {
     let base = "C:\\root\\level1\\level2\\level3\\level4\\level5\\level6\\level7\\level8\\level9";
     let relative = "..\\..\\..\\..\\..\\..\\..\\..\\..\\..\\deep1\\deep2\\deep3\\deep4\\deep5";
 
-    let absolute = relative.absolutize_with(base);
+    let absolute = relative.absolutize_with(Cow::Borrowed(base.as_path()));
     assert_eq_str!(absolute, "C:\\deep1\\deep2\\deep3\\deep4\\deep5");
 
     // Test with current directory dots in deep path
     let deep_relative =
       ".\\sub1\\.\\sub2\\.\\sub3\\.\\sub4\\.\\sub5\\.\\sub6\\.\\sub7\\.\\sub8\\.\\sub9\\.\\sub10";
-    let absolute = deep_relative.absolutize_with(base);
+    let absolute = deep_relative.absolutize_with(Cow::Borrowed(base.as_path()));
     assert_eq_str!(
       absolute,
       "C:\\root\\level1\\level2\\level3\\level4\\level5\\level6\\level7\\level8\\level9\\sub1\\sub2\\sub3\\sub4\\sub5\\sub6\\sub7\\sub8\\sub9\\sub10"

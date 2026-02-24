@@ -33,7 +33,7 @@ Single-trait library: `SugarPath` trait (`src/sugar_path.rs`) adds path manipula
 
 - **`src/sugar_path.rs`** — Trait definition with doc examples
 - **`src/impl_sugar_path.rs`** — All implementations. Two impl blocks: one for `Path`, one for `T: Deref<Target = str>`. Contains `normalize_inner()`, `needs_normalization()`, `relative_str()` and helper functions
-- **`src/utils.rs`** — `IntoCowPath` trait for flexible base-path input in `absolutize_with`
+- **`src/utils.rs`** — `get_current_dir()` helper for `absolutize()`
 
 Key patterns:
 - `Cow<'_, Path>` return types to avoid allocation when the input is already clean
