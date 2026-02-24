@@ -73,12 +73,13 @@ assert_eq!(
 [`absolutize()`] resolves a relative path against the current working directory. [`absolutize_with()`] lets you supply a custom base.
 
 ```rust
+use std::borrow::Cow;
 use sugar_path::SugarPath;
 
 #[cfg(target_family = "unix")]
 {
-  assert_eq!("./world".absolutize_with("/hello"), "/hello/world".as_path());
-  assert_eq!("../world".absolutize_with("/hello"), "/world".as_path());
+  assert_eq!("./world".absolutize_with(Cow::Borrowed("/hello".as_path())), "/hello/world".as_path());
+  assert_eq!("../world".absolutize_with(Cow::Borrowed("/hello".as_path())), "/world".as_path());
 }
 ```
 

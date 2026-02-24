@@ -4,102 +4,113 @@ use std::path::PathBuf;
 use sugar_path::SugarPath;
 mod test_utils;
 
+/// Helper macro to create `Cow::Borrowed` from a string literal for concise test callsites.
+macro_rules! cow {
+  ($s:expr) => {
+    Cow::Borrowed($s.as_path())
+  };
+}
+
 #[cfg(target_family = "unix")]
 #[test]
 fn unix_absolutize_with() {
   // Basic absolutize_with tests
-  assert_eq_str!("./world".absolutize_with("/hello"), "/hello/world");
-  assert_eq_str!("../world".absolutize_with("/hello"), "/world");
-  assert_eq_str!("world".absolutize_with("/hello"), "/hello/world");
+  assert_eq_str!("./world".absolutize_with(cow!("/hello")), "/hello/world");
+  assert_eq_str!("../world".absolutize_with(cow!("/hello")), "/world");
+  assert_eq_str!("world".absolutize_with(cow!("/hello")), "/hello/world");
 
   // With absolute paths as input
-  assert_eq_str!("/absolute".absolutize_with("/base"), "/absolute");
-  assert_eq_str!("/usr/bin".absolutize_with("/home"), "/usr/bin");
+  assert_eq_str!("/absolute".absolutize_with(cow!("/base")), "/absolute");
+  assert_eq_str!("/usr/bin".absolutize_with(cow!("/home")), "/usr/bin");
 
   // With dots in paths
-  assert_eq_str!("./a/./b/../c".absolutize_with("/base"), "/base/a/c");
-  assert_eq_str!("../a/../b".absolutize_with("/base/dir"), "/base/b");
+  assert_eq_str!("./a/./b/../c".absolutize_with(cow!("/base")), "/base/a/c");
+  assert_eq_str!("../a/../b".absolutize_with(cow!("/base/dir")), "/base/b");
 
   // Empty path
-  assert_eq_str!("".absolutize_with("/base"), "/base");
-  assert_eq_str!(".".absolutize_with("/base"), "/base");
+  assert_eq_str!("".absolutize_with(cow!("/base")), "/base");
+  assert_eq_str!(".".absolutize_with(cow!("/base")), "/base");
 
   // Multiple levels up
-  assert_eq_str!("../../file".absolutize_with("/a/b/c"), "/a/file");
-  assert_eq_str!("../../../file".absolutize_with("/a/b/c"), "/file");
+  assert_eq_str!("../../file".absolutize_with(cow!("/a/b/c")), "/a/file");
+  assert_eq_str!("../../../file".absolutize_with(cow!("/a/b/c")), "/file");
 
   // Complex paths
-  assert_eq_str!("./foo/../bar/./baz".absolutize_with("/root"), "/root/bar/baz");
-  assert_eq_str!("a/b/../../c".absolutize_with("/base"), "/base/c");
+  assert_eq_str!("./foo/../bar/./baz".absolutize_with(cow!("/root")), "/root/bar/baz");
+  assert_eq_str!("a/b/../../c".absolutize_with(cow!("/base")), "/base/c");
 }
 
 #[cfg(target_family = "unix")]
 #[test]
 fn unix_absolutize_with_trailing_slash() {
   // Test with trailing slashes
-  assert_eq_str!("world/".absolutize_with("/hello/"), "/hello/world");
-  assert_eq_str!("./world/".absolutize_with("/hello"), "/hello/world");
+  assert_eq_str!("world/".absolutize_with(cow!("/hello/")), "/hello/world");
+  assert_eq_str!("./world/".absolutize_with(cow!("/hello")), "/hello/world");
 }
 
 #[cfg(target_family = "unix")]
 #[test]
-fn unix_absolutize_with_string_types() {
-  // Test with different string types as base
-  let base = String::from("/home/user");
-  assert_eq_str!("documents".absolutize_with(&base), "/home/user/documents");
-  assert_eq_str!("../downloads".absolutize_with(base.as_str()), "/home/downloads");
+fn unix_absolutize_with_cow_variants() {
+  // Test with Cow::Borrowed
+  assert_eq_str!(
+    "documents".absolutize_with(Cow::Borrowed("/home/user".as_path())),
+    "/home/user/documents"
+  );
 
-  // Test with PathBuf as base
+  // Test with Cow::Owned
   let base_path = PathBuf::from("/var/log");
-  assert_eq_str!("app.log".absolutize_with(&base_path), "/var/log/app.log");
+  assert_eq_str!("app.log".absolutize_with(Cow::Owned(base_path)), "/var/log/app.log");
 }
 
 #[cfg(target_family = "windows")]
 #[test]
 fn windows_absolutize_with() {
   // Basic absolutize_with tests
-  assert_eq_str!(".\\world".absolutize_with("C:\\hello"), "C:\\hello\\world");
-  assert_eq_str!("..\\world".absolutize_with("C:\\hello"), "C:\\world");
-  assert_eq_str!("world".absolutize_with("C:\\hello"), "C:\\hello\\world");
+  assert_eq_str!(".\\world".absolutize_with(cow!("C:\\hello")), "C:\\hello\\world");
+  assert_eq_str!("..\\world".absolutize_with(cow!("C:\\hello")), "C:\\world");
+  assert_eq_str!("world".absolutize_with(cow!("C:\\hello")), "C:\\hello\\world");
 
   // With absolute paths as input
-  assert_eq_str!("D:\\absolute".absolutize_with("C:\\base"), "D:\\absolute");
-  assert_eq_str!("C:\\Windows".absolutize_with("C:\\Users"), "C:\\Windows");
+  assert_eq_str!("D:\\absolute".absolutize_with(cow!("C:\\base")), "D:\\absolute");
+  assert_eq_str!("C:\\Windows".absolutize_with(cow!("C:\\Users")), "C:\\Windows");
 
   // With dots in paths
-  assert_eq_str!(".\\a\\.\\b\\..\\c".absolutize_with("C:\\base"), "C:\\base\\a\\c");
-  assert_eq_str!("..\\a\\..\\b".absolutize_with("C:\\base\\dir"), "C:\\base\\b");
+  assert_eq_str!(".\\a\\.\\b\\..\\c".absolutize_with(cow!("C:\\base")), "C:\\base\\a\\c");
+  assert_eq_str!("..\\a\\..\\b".absolutize_with(cow!("C:\\base\\dir")), "C:\\base\\b");
 
   // Empty path
-  assert_eq_str!("".absolutize_with("C:\\base"), "C:\\base");
-  assert_eq_str!(".".absolutize_with("C:\\base"), "C:\\base");
+  assert_eq_str!("".absolutize_with(cow!("C:\\base")), "C:\\base");
+  assert_eq_str!(".".absolutize_with(cow!("C:\\base")), "C:\\base");
 
   // Multiple levels up
-  assert_eq_str!("..\\..\\file".absolutize_with("C:\\a\\b\\c"), "C:\\a\\file");
+  assert_eq_str!("..\\..\\file".absolutize_with(cow!("C:\\a\\b\\c")), "C:\\a\\file");
 
   // Drive-relative paths
-  assert_eq_str!("C:file".absolutize_with("D:\\base"), "C:\\file");
-  assert_eq_str!("C:.\\file".absolutize_with("D:\\base"), "C:\\file");
+  assert_eq_str!("C:file".absolutize_with(cow!("D:\\base")), "C:\\file");
+  assert_eq_str!("C:.\\file".absolutize_with(cow!("D:\\base")), "C:\\file");
 }
 
 #[cfg(target_family = "windows")]
 #[test]
 fn windows_absolutize_with_unc_paths() {
   // UNC path tests
-  assert_eq_str!("file".absolutize_with("\\\\server\\share"), "\\\\server\\share\\file");
+  assert_eq_str!("file".absolutize_with(cow!("\\\\server\\share")), "\\\\server\\share\\file");
   assert_eq_str!(
-    "..\\other".absolutize_with("\\\\server\\share\\folder"),
+    "..\\other".absolutize_with(cow!("\\\\server\\share\\folder")),
     "\\\\server\\share\\other"
   );
-  assert_eq_str!("\\\\other\\share".absolutize_with("\\\\server\\share"), "\\\\other\\share\\");
+  assert_eq_str!(
+    "\\\\other\\share".absolutize_with(cow!("\\\\server\\share")),
+    "\\\\other\\share\\"
+  );
 }
 
 #[cfg(target_family = "windows")]
 #[test]
 fn windows_absolutize_with_mixed_separators() {
   // Test with mixed separators
-  assert_eq_str!("sub/folder".absolutize_with("C:\\base"), "C:\\base\\sub\\folder");
-  assert_eq_str!("./sub\\folder".absolutize_with("C:/base"), "C:\\base\\sub\\folder");
+  assert_eq_str!("sub/folder".absolutize_with(cow!("C:\\base")), "C:\\base\\sub\\folder");
+  assert_eq_str!("./sub\\folder".absolutize_with(cow!("C:/base")), "C:\\base\\sub\\folder");
 }
 
 #[test]
@@ -107,29 +118,29 @@ fn absolutize_with_relative_base() {
   // When base is relative, absolutize_with will resolve to absolute paths
   // based on current working directory
   let cwd = std::env::current_dir().unwrap();
-  assert_eq!("file".absolutize_with("relative/path"), cwd.join("relative/path/file"));
-  assert_eq!("./file".absolutize_with("./base"), cwd.join("base/file"));
-  assert_eq!("../file".absolutize_with("base/dir"), cwd.join("base/file"));
+  assert_eq!("file".absolutize_with(cow!("relative/path")), cwd.join("relative/path/file"));
+  assert_eq!("./file".absolutize_with(cow!("./base")), cwd.join("base/file"));
+  assert_eq!("../file".absolutize_with(cow!("base/dir")), cwd.join("base/file"));
 }
 
 #[test]
 fn absolutize_with_edge_cases() {
   // Edge cases - absolutize_with always produces absolute paths
   let cwd = std::env::current_dir().unwrap();
-  assert_eq!("..".absolutize_with("base"), cwd);
+  assert_eq!("..".absolutize_with(cow!("base")), cwd);
 
   // Going up two levels from base/dir should end up at cwd
-  assert_eq!("../..".absolutize_with("base/dir"), cwd);
+  assert_eq!("../..".absolutize_with(cow!("base/dir")), cwd);
 
   // Going up beyond root should normalize properly
   #[cfg(target_family = "unix")]
   {
-    assert_eq_str!("../../../../file".absolutize_with("/a/b"), "/file");
+    assert_eq_str!("../../../../file".absolutize_with(cow!("/a/b")), "/file");
   }
 
   #[cfg(target_family = "windows")]
   {
-    assert_eq_str!("..\\..\\..\\..\\file".absolutize_with("C:\\a\\b"), "C:\\file");
+    assert_eq_str!("..\\..\\..\\..\\file".absolutize_with(cow!("C:\\a\\b")), "C:\\file");
   }
 }
 
@@ -138,7 +149,7 @@ fn absolutize_with_edge_cases() {
 fn unix_clean_absolute_paths_are_returned_without_allocating() {
   for path in ["/", "/usr/local/bin", "/home/user/file.txt", "/foo/bar"] {
     assert!(
-      matches!(p!(path).absolutize_with("/base"), Cow::Borrowed(_)),
+      matches!(p!(path).absolutize_with(cow!("/base")), Cow::Borrowed(_)),
       "expected zero-alloc borrow for clean absolute path {:?}",
       path,
     );
@@ -151,7 +162,7 @@ fn unix_dirty_or_relative_paths_are_allocated() {
   // Relative paths — always allocate
   for path in ["", "foo", "foo/bar", "./foo", "../foo"] {
     assert!(
-      matches!(p!(path).absolutize_with("/base"), Cow::Owned(_)),
+      matches!(p!(path).absolutize_with(cow!("/base")), Cow::Owned(_)),
       "expected allocation for relative path {:?}",
       path,
     );
@@ -159,7 +170,7 @@ fn unix_dirty_or_relative_paths_are_allocated() {
   // Absolute but dirty — normalize allocates
   for path in ["/foo/../bar", "/foo//bar", "/foo/./bar", "/foo/bar/"] {
     assert!(
-      matches!(p!(path).absolutize_with("/base"), Cow::Owned(_)),
+      matches!(p!(path).absolutize_with(cow!("/base")), Cow::Owned(_)),
       "expected allocation for dirty absolute path {:?}",
       path,
     );
@@ -173,7 +184,7 @@ fn windows_clean_absolute_paths_are_returned_without_allocating() {
   // Root-relative paths like `\foo\bar` are NOT absolute.
   for path in [r"C:\foo\bar", r"C:\"] {
     assert!(
-      matches!(p!(path).absolutize_with("C:\\base"), Cow::Borrowed(_)),
+      matches!(p!(path).absolutize_with(cow!("C:\\base")), Cow::Borrowed(_)),
       "expected zero-alloc borrow for clean absolute path {:?}",
       path,
     );
@@ -186,7 +197,7 @@ fn windows_dirty_or_relative_paths_are_allocated() {
   // Relative paths — always allocate
   for path in ["", "foo", r"foo\bar", r".\foo", r"..\foo"] {
     assert!(
-      matches!(p!(path).absolutize_with("C:\\base"), Cow::Owned(_)),
+      matches!(p!(path).absolutize_with(cow!("C:\\base")), Cow::Owned(_)),
       "expected allocation for relative path {:?}",
       path,
     );
@@ -194,7 +205,7 @@ fn windows_dirty_or_relative_paths_are_allocated() {
   // Root-relative (no prefix) — not absolute on Windows, always allocate
   for path in [r"\", r"\foo\bar"] {
     assert!(
-      matches!(p!(path).absolutize_with("C:\\base"), Cow::Owned(_)),
+      matches!(p!(path).absolutize_with(cow!("C:\\base")), Cow::Owned(_)),
       "expected allocation for root-relative path {:?}",
       path,
     );
@@ -202,7 +213,7 @@ fn windows_dirty_or_relative_paths_are_allocated() {
   // Absolute but dirty — normalize allocates
   for path in ["C:", "C:/foo", r"\foo\..\bar", r"\\server\share\dir"] {
     assert!(
-      matches!(p!(path).absolutize_with("C:\\base"), Cow::Owned(_)),
+      matches!(p!(path).absolutize_with(cow!("C:\\base")), Cow::Owned(_)),
       "expected allocation for dirty absolute path {:?}",
       path,
     );
