@@ -29,7 +29,7 @@ impl SugarPath for Path {
   // Unifying them (`&'a self, Cow<'a, Path>) -> Cow<'a, ...>`) would allow
   // borrowing from `base` for noop cases ("", "."), but it constrains callers:
   // base's borrowed data must outlive self. Callers needing "".absolutize_with(base)
-  // can just call base.normalize() directly.
+  // can just call base.absolutize() directly.
   fn absolutize_with<'a>(&self, base: Cow<'a, Path>) -> Cow<'_, Path> {
     if self.is_absolute() {
       return self.normalize();
@@ -662,7 +662,7 @@ fn replace_main_separator(input: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-  use std::{borrow::Cow, path::Path, path::PathBuf};
+  use std::{borrow::Cow, path::PathBuf};
 
   use super::SugarPath;
 
@@ -698,6 +698,7 @@ mod tests {
   #[cfg(target_family = "unix")]
   #[test]
   fn normalize() {
+    use std::path::Path;
     assert_eq_str!(Path::new("/foo/../../../bar").normalize(), "/bar");
     assert_eq_str!(Path::new("a//b//../b").normalize(), "a/b");
     assert_eq_str!(Path::new("/foo/../../../bar").normalize(), "/bar");
