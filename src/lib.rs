@@ -98,7 +98,6 @@
 //! for release and migration information.
 
 #[cfg(not(unix))]
-#[allow(unsafe_code)]
 mod encoded_arena;
 mod impl_sugar_path;
 mod sugar_path;

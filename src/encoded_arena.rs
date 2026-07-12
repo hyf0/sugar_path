@@ -45,6 +45,7 @@ impl<'id, const N: usize> EncodedArena<'id, N> {
     // SAFETY: `EncodedFragment` can only be created by `store_os_str` in this
     // branded, append-only arena. Its range therefore contains one complete
     // `OsStr::as_encoded_bytes()` result from this Rust version and target.
+    #[expect(unsafe_code, reason = "single audited native-encoding reconstruction")]
     let value = unsafe { OsStr::from_encoded_bytes_unchecked(bytes) };
     output.push(value);
   }
