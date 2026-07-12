@@ -221,9 +221,22 @@ fn relative_from_normal_stacks(base: &OsStrVec<'_>, target: &OsStrVec<'_>) -> Op
 /// (or other cwd-independent shape), resolve them against one absolute cwd as
 /// normal-component stacks and build a single relative result. Avoids cloning
 /// cwd twice and allocating two intermediate absolute `PathBuf`s.
+///
+/// Callers that already hold shapes should use
+/// [`relative_both_relative_via_cwd_with_shapes`] so each path is classified once.
 fn try_relative_both_relative_via_cwd(target: &Path, base: &Path, cwd: &Path) -> Option<PathBuf> {
   let target_shape = classify_lexical_relative(target)?;
   let base_shape = classify_lexical_relative(base)?;
+  relative_both_relative_via_cwd_with_shapes(target, target_shape, base, base_shape, cwd)
+}
+
+fn relative_both_relative_via_cwd_with_shapes(
+  target: &Path,
+  target_shape: LexicalRelativeShape,
+  base: &Path,
+  base_shape: LexicalRelativeShape,
+  cwd: &Path,
+) -> Option<PathBuf> {
   let cwd_stack = absolute_normal_stack(cwd)?;
   let base_resolved = apply_relative_shape_to_stack(&cwd_stack, base_shape, base);
   let target_resolved = apply_relative_shape_to_stack(&cwd_stack, target_shape, target);
@@ -883,13 +896,18 @@ fn try_relative_outcome<'a>(
   // Pure lexical relative pairs only (no prefix/root). Windows drive-relative
   // inputs are `!has_root()` but carry a Prefix — they must keep try_absolutize
   // so ambient relative uses per-drive `std::path::absolute`, not absolutize_with
-  // against the process cwd.
-  if classify_lexical_relative(target_path).is_some()
-    && classify_lexical_relative(base_path).is_some()
+  // against the process cwd. Classify once; reuse shapes for the stack resolve.
+  if let (Some(target_shape), Some(base_shape)) =
+    (classify_lexical_relative(target_path), classify_lexical_relative(base_path))
   {
     let cwd = try_get_current_dir()?;
-    if let Some(relative) = try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref())
-    {
+    if let Some(relative) = relative_both_relative_via_cwd_with_shapes(
+      target_path,
+      target_shape,
+      base_path,
+      base_shape,
+      cwd.as_ref(),
+    ) {
       return Ok(RelativeOutcome::Native(relative));
     }
     let base = base_path.absolutize_with(cwd.as_ref()).into_owned();
