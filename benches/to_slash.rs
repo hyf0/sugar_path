@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::path::{Path, PathBuf};
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use sugar_path::SugarPath;
+use sugar_path::{SugarPath, SugarPathBuf};
 
 mod support;
 
@@ -20,7 +20,7 @@ fn bench_to_slash(criterion: &mut Criterion) {
     group.bench_with_input(BenchmarkId::from_parameter(case.name), case, |bencher, case| {
       bencher.iter(|| {
         let path = Path::new(black_box(case.path));
-        black_box(path.to_slash().expect("benchmark paths are valid UTF-8"))
+        black_box(path.to_slash())
       });
     });
   }
@@ -45,30 +45,14 @@ fn bench_to_slash(criterion: &mut Criterion) {
   group.bench_function("borrowed_receiver/string_result", |bencher| {
     bencher.iter_batched(
       || PathBuf::from(owned_case.path),
-      |input| {
-        black_box(
-          black_box(input.as_path())
-            .to_slash()
-            .expect("benchmark paths are valid UTF-8")
-            .into_owned(),
-        )
-      },
+      |input| black_box(black_box(input.as_path()).to_slash().into_owned()),
       BatchSize::SmallInput,
     );
   });
-  // v2 cannot consume the PathBuf during slash conversion, so this row uses
-  // the same String-producing operation as the borrowed-receiver control.
   group.bench_function("owned_receiver/string_result", |bencher| {
     bencher.iter_batched(
       || PathBuf::from(owned_case.path),
-      |input| {
-        black_box(
-          black_box(input.as_path())
-            .to_slash()
-            .expect("benchmark paths are valid UTF-8")
-            .into_owned(),
-        )
-      },
+      |input| black_box(black_box(input).into_slash()),
       BatchSize::SmallInput,
     );
   });
@@ -85,7 +69,7 @@ fn bench_to_slash(criterion: &mut Criterion) {
         |bencher, case| {
           bencher.iter(|| {
             let path = Path::new(black_box(case.path));
-            black_box(path.to_slash().expect("benchmark paths are valid UTF-8"))
+            black_box(path.to_slash())
           });
         },
       );
@@ -109,7 +93,7 @@ fn bench_to_slash(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("slash/invalid_unicode");
     group.throughput(Throughput::Bytes(invalid.as_os_str().len() as u64));
     group.bench_function("borrowed_receiver/fallible_result", |bencher| {
-      bencher.iter(|| black_box(black_box(invalid.as_path()).to_slash()));
+      bencher.iter(|| black_box(black_box(invalid.as_path()).try_to_slash()));
     });
     group.bench_function("borrowed_receiver/lossy_result", |bencher| {
       bencher.iter(|| black_box(black_box(invalid.as_path()).to_slash_lossy()));

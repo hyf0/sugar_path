@@ -11,30 +11,30 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / clean input -> normalized path | 0 | 0 | 0 |
 | normalize / dirty input -> normalized path | 1 | 0 | 0 |
 | normalize / empty current-directory spelling -> normalized path | 0 | 0 | 0 |
-| normalize / dot current-directory spelling -> normalized path | 1 | 0 | 0 |
-| normalize / dot-separator current-directory spelling -> normalized path | 1 | 0 | 0 |
+| normalize / dot current-directory spelling -> normalized path | 0 | 0 | 0 |
+| normalize / dot-separator current-directory spelling -> normalized path | 0 | 0 | 0 |
 | normalize / collapsing input -> normalized path | 1 | 0 | 0 |
 | normalize / noncanonical leading parents -> normalized path | 1 | 0 | 0 |
-| normalize / canonical leading parents -> normalized path | 1 | 0 | 0 |
+| normalize / canonical leading parents -> normalized path | 0 | 0 | 0 |
 | normalize / clean invalid encoding -> normalized path | 1 | 0 | 0 |
 | normalize / owned clean input via borrowed receiver -> PathBuf | 1 | 0 | 0 |
-| normalize / owned clean input via owned receiver -> PathBuf | 1 | 0 | 0 |
+| normalize / owned clean input via owned receiver -> PathBuf | 0 | 0 | 0 |
 | normalize / owned dirty input via borrowed receiver -> PathBuf | 1 | 0 | 0 |
 | normalize / owned dirty input via owned receiver -> PathBuf | 1 | 0 | 0 |
-| normalize / owned dot input via borrowed receiver -> PathBuf | 2 | 0 | 0 |
-| normalize / owned dot input via owned receiver -> PathBuf | 2 | 0 | 0 |
+| normalize / owned dot input via borrowed receiver -> PathBuf | 1 | 0 | 0 |
+| normalize / owned dot input via owned receiver -> PathBuf | 0 | 0 | 0 |
 | normalize / owned collapsing input via borrowed receiver -> PathBuf | 2 | 0 | 0 |
-| normalize / owned collapsing input via owned receiver -> PathBuf | 2 | 0 | 0 |
+| normalize / owned collapsing input via owned receiver -> PathBuf | 1 | 0 | 0 |
 | normalize / owned invalid input via borrowed receiver -> PathBuf | 1 | 0 | 0 |
 | normalize / owned invalid input via owned receiver -> PathBuf | 1 | 0 | 0 |
 | pipeline / dirty join via borrowed receiver -> PathBuf | 2 | 0 | 2 |
 | pipeline / dirty join via owned receiver -> PathBuf | 2 | 0 | 2 |
 | pipeline / dirty join via borrowed receiver -> String | 3 | 0 | 2 |
-| pipeline / dirty join via owned receiver -> String | 3 | 0 | 2 |
+| pipeline / dirty join via owned receiver -> String | 2 | 0 | 2 |
 | pipeline / clean join via borrowed receiver -> PathBuf | 2 | 0 | 2 |
-| pipeline / clean join via owned receiver -> PathBuf | 2 | 0 | 2 |
+| pipeline / clean join via owned receiver -> PathBuf | 1 | 0 | 2 |
 | pipeline / clean join via borrowed receiver -> String | 2 | 0 | 2 |
-| pipeline / clean join via owned receiver -> String | 2 | 0 | 2 |
+| pipeline / clean join via owned receiver -> String | 1 | 0 | 2 |
 | Windows / absolute mixed separators -> normalized path | 1 | 0 | 0 |
 | Windows / canonical ordinary UNC -> normalized path | 1 | 0 | 0 |
 | Windows / canonical verbatim UNC -> normalized path | 1 | 0 | 0 |
@@ -42,51 +42,52 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | absolutize_with / absolute input + borrowed cwd -> absolute path | 0 | 0 | 0 |
 | absolutize_with / relative input + borrowed cwd -> absolute path | 2 | 0 | 1 |
 | absolutize_with / relative input + owned cwd -> absolute path (setup excluded) | 1 | 0 | 1 |
-| relative / canonical native descendant -> natural result | 4 | 0 | 0 |
-| relative / canonical native descendant -> PathBuf | 4 | 0 | 0 |
-| relative / relative inputs -> relative path | 5 | 0 | 4 |
-| relative / dotted relative inputs -> relative path | 5 | 0 | 4 |
-| relative / equal leading-parent inputs -> relative path | 5 | 0 | 4 |
-| relative / unequal leading-parent inputs -> relative path | 5 | 0 | 4 |
-| relative / p99-depth equal leading-parent inputs -> relative path | 5 | 0 | 4 |
-| relative / p99-depth unequal leading-parent inputs -> relative path | 5 | 0 | 6 |
-| relative / current-directory spellings -> relative path | 4 | 0 | 2 |
+| absolutize_with / clean relative input + owned cwd -> absolute path (setup excluded) | 0 | 0 | 1 |
+| relative / canonical native descendant -> natural result | 0 | 0 | 0 |
+| relative / canonical native descendant -> PathBuf | 1 | 0 | 0 |
+| relative / relative inputs -> relative path | 1 | 0 | 0 |
+| relative / dotted relative inputs -> relative path | 1 | 0 | 0 |
+| relative / equal leading-parent inputs -> relative path | 1 | 0 | 0 |
+| relative / unequal leading-parent inputs -> relative path | 5 | 0 | 2 |
+| relative / p99-depth equal leading-parent inputs -> relative path | 1 | 0 | 0 |
+| relative / p99-depth unequal leading-parent inputs -> relative path | 5 | 0 | 2 |
+| relative / current-directory spellings -> relative path | 0 | 0 | 0 |
 | relative / dotted slow path -> relative path | 4 | 0 | 0 |
-| relative / invalid-encoding absolute target -> relative path (setup excluded) | 3 | 0 | 3 |
-| relative / invalid-encoding relative target -> relative path (setup excluded) | 5 | 0 | 4 |
+| relative / invalid-encoding absolute target -> relative path (setup excluded) | 3 | 0 | 0 |
+| relative / invalid-encoding relative target -> relative path (setup excluded) | 1 | 0 | 0 |
 | Windows / absolute forward-slash inputs -> relative path | 2 | 0 | 0 |
-| Windows / same drive-relative prefix -> relative path | 3 | 0 | 4 |
-| Windows / different drive-relative prefix -> relative path | 3 | 0 | 4 |
-| Windows / root-relative inputs -> relative path | 5 | 0 | 2 |
-| Windows / ordinary UNC same share -> relative path | 4 | 0 | 0 |
-| Windows / ordinary UNC different share -> relative path | 3 | 0 | 0 |
-| Windows / verbatim UNC same share -> relative path | 4 | 0 | 0 |
-| Windows / verbatim UNC different share -> relative path | 4 | 0 | 0 |
+| Windows / same drive-relative prefix -> relative path | 1 | 0 | 0 |
+| Windows / different drive-relative prefix -> relative path | 4 | 0 | 0 |
+| Windows / root-relative inputs -> relative path | 3 | 0 | 0 |
+| Windows / ordinary UNC same share -> relative path | 1 | 0 | 0 |
+| Windows / ordinary UNC different share -> relative path | 1 | 0 | 0 |
+| Windows / verbatim UNC same share -> relative path | 1 | 0 | 0 |
+| Windows / verbatim UNC different share -> relative path | 1 | 0 | 0 |
 | to_slash / native path -> slash text | 1 | 0 | 0 |
 | to_slash_lossy / invalid encoding -> lossy slash text (setup excluded) | 2 | 0 | 0 |
 | to_slash / owned valid input via borrowed receiver -> String | 1 | 0 | 0 |
-| to_slash / owned valid input via owned receiver -> String | 1 | 0 | 0 |
-| to_slash_lossy / owned invalid input via owned receiver -> String | 2 | 0 | 0 |
+| to_slash / owned valid input via owned receiver -> String | 0 | 0 | 0 |
+| to_slash_lossy / owned invalid input via owned receiver -> String | 1 | 0 | 0 |
 | Windows / already-forward path -> slash text | 0 | 0 | 0 |
 | Windows / mixed separators -> slash text | 1 | 0 | 0 |
-| Rolldown / cwd descendant via natural relative result -> String | 5 | 0 | 0 |
-| Rolldown / cwd descendant via requested PathBuf result -> String | 5 | 0 | 0 |
-| Rolldown / cwd descendant via natural normalized result -> String | 5 | 0 | 0 |
-| Rolldown / cwd descendant via requested PathBuf normalized result -> String | 5 | 0 | 0 |
-| Rolldown / upward relation via natural relative result -> String | 5 | 0 | 0 |
-| Rolldown / upward relation via requested PathBuf result -> String | 5 | 0 | 0 |
-| Rolldown / upward relation via natural normalized result -> String | 6 | 0 | 0 |
-| Rolldown / upward relation via requested PathBuf normalized result -> String | 6 | 0 | 0 |
-| Rolldown / cwd descendant via natural relative result -> ArcStr | 6 | 0 | 0 |
-| Rolldown / cwd descendant via natural relative result -> String -> ArcStr | 6 | 0 | 0 |
-| Rolldown / cwd descendant via requested PathBuf result -> String -> ArcStr | 6 | 0 | 0 |
-| Rolldown / upward relation via natural relative result -> ArcStr | 6 | 0 | 0 |
-| Rolldown / upward relation via natural relative result -> String -> ArcStr | 6 | 0 | 0 |
-| Rolldown / upward relation via requested PathBuf result -> String -> ArcStr | 6 | 0 | 0 |
-| Rolldown / sideEffects descendant via relative -> temporary text | 4 | 0 | 0 |
+| Rolldown / cwd descendant via natural relative result -> String | 1 | 0 | 0 |
+| Rolldown / cwd descendant via requested PathBuf result -> String | 1 | 0 | 0 |
+| Rolldown / cwd descendant via natural normalized result -> String | 1 | 0 | 0 |
+| Rolldown / cwd descendant via requested PathBuf normalized result -> String | 1 | 0 | 0 |
+| Rolldown / upward relation via natural relative result -> String | 2 | 0 | 0 |
+| Rolldown / upward relation via requested PathBuf result -> String | 1 | 0 | 0 |
+| Rolldown / upward relation via natural normalized result -> String | 2 | 0 | 0 |
+| Rolldown / upward relation via requested PathBuf normalized result -> String | 1 | 0 | 0 |
+| Rolldown / cwd descendant via natural relative result -> ArcStr | 2 | 0 | 0 |
+| Rolldown / cwd descendant via natural relative result -> String -> ArcStr | 2 | 0 | 0 |
+| Rolldown / cwd descendant via requested PathBuf result -> String -> ArcStr | 2 | 0 | 0 |
+| Rolldown / upward relation via natural relative result -> ArcStr | 3 | 0 | 0 |
+| Rolldown / upward relation via natural relative result -> String -> ArcStr | 3 | 0 | 0 |
+| Rolldown / upward relation via requested PathBuf result -> String -> ArcStr | 2 | 0 | 0 |
+| Rolldown / sideEffects descendant via relative -> temporary text | 0 | 0 | 0 |
 | Rolldown / sideEffects descendant via strip-prefix fallback -> temporary text | 0 | 0 | 0 |
-| Rolldown / sideEffects upward via relative -> temporary text | 4 | 0 | 0 |
-| Rolldown / sideEffects upward via strip-prefix fallback -> temporary text | 4 | 0 | 0 |
+| Rolldown / sideEffects upward via relative -> temporary text | 1 | 0 | 0 |
+| Rolldown / sideEffects upward via strip-prefix fallback -> temporary text | 1 | 0 | 0 |
 
 ## Requested bytes (platform-specific evidence)
 
@@ -95,30 +96,30 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / clean input -> normalized path | 0 | 0 |
 | normalize / dirty input -> normalized path | 58 | 0 |
 | normalize / empty current-directory spelling -> normalized path | 0 | 0 |
-| normalize / dot current-directory spelling -> normalized path | 1 | 0 |
-| normalize / dot-separator current-directory spelling -> normalized path | 2 | 0 |
+| normalize / dot current-directory spelling -> normalized path | 0 | 0 |
+| normalize / dot-separator current-directory spelling -> normalized path | 0 | 0 |
 | normalize / collapsing input -> normalized path | 6 | 0 |
 | normalize / noncanonical leading parents -> normalized path | 51 | 0 |
-| normalize / canonical leading parents -> normalized path | 22 | 0 |
+| normalize / canonical leading parents -> normalized path | 0 | 0 |
 | normalize / clean invalid encoding -> normalized path | 70 | 0 |
 | normalize / owned clean input via borrowed receiver -> PathBuf | 58 | 0 |
-| normalize / owned clean input via owned receiver -> PathBuf | 58 | 0 |
+| normalize / owned clean input via owned receiver -> PathBuf | 0 | 0 |
 | normalize / owned dirty input via borrowed receiver -> PathBuf | 58 | 0 |
 | normalize / owned dirty input via owned receiver -> PathBuf | 58 | 0 |
-| normalize / owned dot input via borrowed receiver -> PathBuf | 2 | 0 |
-| normalize / owned dot input via owned receiver -> PathBuf | 2 | 0 |
+| normalize / owned dot input via borrowed receiver -> PathBuf | 1 | 0 |
+| normalize / owned dot input via owned receiver -> PathBuf | 0 | 0 |
 | normalize / owned collapsing input via borrowed receiver -> PathBuf | 7 | 0 |
-| normalize / owned collapsing input via owned receiver -> PathBuf | 7 | 0 |
+| normalize / owned collapsing input via owned receiver -> PathBuf | 6 | 0 |
 | normalize / owned invalid input via borrowed receiver -> PathBuf | 70 | 0 |
 | normalize / owned invalid input via owned receiver -> PathBuf | 70 | 0 |
 | pipeline / dirty join via borrowed receiver -> PathBuf | 100 | 126 |
 | pipeline / dirty join via owned receiver -> PathBuf | 100 | 126 |
 | pipeline / dirty join via borrowed receiver -> String | 170 | 126 |
-| pipeline / dirty join via owned receiver -> String | 170 | 126 |
+| pipeline / dirty join via owned receiver -> String | 100 | 126 |
 | pipeline / clean join via borrowed receiver -> PathBuf | 91 | 126 |
-| pipeline / clean join via owned receiver -> PathBuf | 91 | 126 |
+| pipeline / clean join via owned receiver -> PathBuf | 21 | 126 |
 | pipeline / clean join via borrowed receiver -> String | 91 | 126 |
-| pipeline / clean join via owned receiver -> String | 91 | 126 |
+| pipeline / clean join via owned receiver -> String | 21 | 126 |
 | Windows / absolute mixed separators -> normalized path | 60 | 0 |
 | Windows / canonical ordinary UNC -> normalized path | 36 | 0 |
 | Windows / canonical verbatim UNC -> normalized path | 42 | 0 |
@@ -126,48 +127,49 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | absolutize_with / absolute input + borrowed cwd -> absolute path | 0 | 0 |
 | absolutize_with / relative input + borrowed cwd -> absolute path | 107 | 74 |
 | absolutize_with / relative input + owned cwd -> absolute path (setup excluded) | 70 | 74 |
-| relative / canonical native descendant -> natural result | 171 | 0 |
-| relative / canonical native descendant -> PathBuf | 171 | 0 |
-| relative / relative inputs -> relative path | 367 | 324 |
-| relative / dotted relative inputs -> relative path | 334 | 324 |
-| relative / equal leading-parent inputs -> relative path | 334 | 324 |
-| relative / unequal leading-parent inputs -> relative path | 331 | 378 |
-| relative / p99-depth equal leading-parent inputs -> relative path | 351 | 324 |
-| relative / p99-depth unequal leading-parent inputs -> relative path | 348 | 516 |
-| relative / current-directory spellings -> relative path | 279 | 276 |
-| relative / dotted slow path -> relative path | 201 | 0 |
-| relative / invalid-encoding absolute target -> relative path (setup excluded) | 99 | 112 |
-| relative / invalid-encoding relative target -> relative path (setup excluded) | 333 | 324 |
+| absolutize_with / clean relative input + owned cwd -> absolute path (setup excluded) | 0 | 74 |
+| relative / canonical native descendant -> natural result | 0 | 0 |
+| relative / canonical native descendant -> PathBuf | 32 | 0 |
+| relative / relative inputs -> relative path | 31 | 0 |
+| relative / dotted relative inputs -> relative path | 23 | 0 |
+| relative / equal leading-parent inputs -> relative path | 23 | 0 |
+| relative / unequal leading-parent inputs -> relative path | 383 | 276 |
+| relative / p99-depth equal leading-parent inputs -> relative path | 18 | 0 |
+| relative / p99-depth unequal leading-parent inputs -> relative path | 427 | 276 |
+| relative / current-directory spellings -> relative path | 0 | 0 |
+| relative / dotted slow path -> relative path | 195 | 0 |
+| relative / invalid-encoding absolute target -> relative path (setup excluded) | 139 | 0 |
+| relative / invalid-encoding relative target -> relative path (setup excluded) | 24 | 0 |
 | Windows / absolute forward-slash inputs -> relative path | 56 | 0 |
-| Windows / same drive-relative prefix -> relative path | 43 | 118 |
-| Windows / different drive-relative prefix -> relative path | 43 | 118 |
-| Windows / root-relative inputs -> relative path | 183 | 48 |
-| Windows / ordinary UNC same share -> relative path | 116 | 0 |
-| Windows / ordinary UNC different share -> relative path | 98 | 0 |
-| Windows / verbatim UNC same share -> relative path | 128 | 0 |
-| Windows / verbatim UNC different share -> relative path | 146 | 0 |
+| Windows / same drive-relative prefix -> relative path | 18 | 0 |
+| Windows / different drive-relative prefix -> relative path | 178 | 0 |
+| Windows / root-relative inputs -> relative path | 51 | 0 |
+| Windows / ordinary UNC same share -> relative path | 27 | 0 |
+| Windows / ordinary UNC different share -> relative path | 36 | 0 |
+| Windows / verbatim UNC same share -> relative path | 27 | 0 |
+| Windows / verbatim UNC different share -> relative path | 42 | 0 |
 | to_slash / native path -> slash text | 58 | 0 |
 | to_slash_lossy / invalid encoding -> lossy slash text (setup excluded) | 140 | 0 |
 | to_slash / owned valid input via borrowed receiver -> String | 58 | 0 |
-| to_slash / owned valid input via owned receiver -> String | 58 | 0 |
-| to_slash_lossy / owned invalid input via owned receiver -> String | 140 | 0 |
+| to_slash / owned valid input via owned receiver -> String | 0 | 0 |
+| to_slash_lossy / owned invalid input via owned receiver -> String | 70 | 0 |
 | Windows / already-forward path -> slash text | 0 | 0 |
 | Windows / mixed separators -> slash text | 58 | 0 |
-| Rolldown / cwd descendant via natural relative result -> String | 271 | 0 |
-| Rolldown / cwd descendant via requested PathBuf result -> String | 271 | 0 |
-| Rolldown / cwd descendant via natural normalized result -> String | 271 | 0 |
-| Rolldown / cwd descendant via requested PathBuf normalized result -> String | 271 | 0 |
-| Rolldown / upward relation via natural relative result -> String | 170 | 0 |
-| Rolldown / upward relation via requested PathBuf result -> String | 170 | 0 |
-| Rolldown / upward relation via natural normalized result -> String | 189 | 0 |
-| Rolldown / upward relation via requested PathBuf normalized result -> String | 189 | 0 |
-| Rolldown / cwd descendant via natural relative result -> ArcStr | 344 | 0 |
-| Rolldown / cwd descendant via natural relative result -> String -> ArcStr | 344 | 0 |
-| Rolldown / cwd descendant via requested PathBuf result -> String -> ArcStr | 344 | 0 |
-| Rolldown / upward relation via natural relative result -> ArcStr | 205 | 0 |
-| Rolldown / upward relation via natural relative result -> String -> ArcStr | 205 | 0 |
-| Rolldown / upward relation via requested PathBuf result -> String -> ArcStr | 205 | 0 |
-| Rolldown / sideEffects descendant via relative -> temporary text | 214 | 0 |
+| Rolldown / cwd descendant via natural relative result -> String | 57 | 0 |
+| Rolldown / cwd descendant via requested PathBuf result -> String | 57 | 0 |
+| Rolldown / cwd descendant via natural normalized result -> String | 57 | 0 |
+| Rolldown / cwd descendant via requested PathBuf normalized result -> String | 57 | 0 |
+| Rolldown / upward relation via natural relative result -> String | 38 | 0 |
+| Rolldown / upward relation via requested PathBuf result -> String | 19 | 0 |
+| Rolldown / upward relation via natural normalized result -> String | 38 | 0 |
+| Rolldown / upward relation via requested PathBuf normalized result -> String | 19 | 0 |
+| Rolldown / cwd descendant via natural relative result -> ArcStr | 130 | 0 |
+| Rolldown / cwd descendant via natural relative result -> String -> ArcStr | 130 | 0 |
+| Rolldown / cwd descendant via requested PathBuf result -> String -> ArcStr | 130 | 0 |
+| Rolldown / upward relation via natural relative result -> ArcStr | 73 | 0 |
+| Rolldown / upward relation via natural relative result -> String -> ArcStr | 73 | 0 |
+| Rolldown / upward relation via requested PathBuf result -> String -> ArcStr | 54 | 0 |
+| Rolldown / sideEffects descendant via relative -> temporary text | 0 | 0 |
 | Rolldown / sideEffects descendant via strip-prefix fallback -> temporary text | 0 | 0 |
-| Rolldown / sideEffects upward via relative -> temporary text | 151 | 0 |
-| Rolldown / sideEffects upward via strip-prefix fallback -> temporary text | 151 | 0 |
+| Rolldown / sideEffects upward via relative -> temporary text | 19 | 0 |
+| Rolldown / sideEffects upward via strip-prefix fallback -> temporary text | 19 | 0 |

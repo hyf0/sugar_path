@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
 
@@ -45,7 +44,7 @@ fn bench_absolutize(criterion: &mut Criterion) {
     bencher.iter(|| {
       let input = Path::new(black_box(clean_absolute));
       let base = Path::new(black_box(ROLLDOWN_ROOT));
-      black_box(input.absolutize_with(Cow::Borrowed(base)))
+      black_box(input.absolutize_with(base))
     });
   });
   for (name, path) in
@@ -56,7 +55,7 @@ fn bench_absolutize(criterion: &mut Criterion) {
       bencher.iter(|| {
         let input = Path::new(black_box(path));
         let base = Path::new(black_box(ROLLDOWN_ROOT));
-        black_box(input.absolutize_with(Cow::Borrowed(base)))
+        black_box(input.absolutize_with(base))
       });
     });
   }
@@ -69,7 +68,7 @@ fn bench_absolutize(criterion: &mut Criterion) {
       let base = PathBuf::from(black_box(ROLLDOWN_ROOT));
       runner.run(|| {
         let input = Path::new(black_box(RELATIVE_MODULE));
-        let output = input.absolutize_with(Cow::Owned(base));
+        let output = input.absolutize_with(base);
         drop(black_box(output));
       });
     });

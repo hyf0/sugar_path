@@ -25,9 +25,6 @@ fn bench_relative(criterion: &mut Criterion) {
   }
   group.finish();
 
-  // The v2 natural result is already a PathBuf, so this is intentionally the
-  // same operation at the baseline. The later API preserves this ID while
-  // explicitly converting its natural result to the requested PathBuf.
   let mut group =
     criterion.benchmark_group("relative/borrowed_receiver/pathbuf_result/rolldown_shapes");
   for case in RELATIVE_CASES {
@@ -36,7 +33,7 @@ fn bench_relative(criterion: &mut Criterion) {
       bencher.iter(|| {
         let target = Path::new(black_box(case.target));
         let base = Path::new(black_box(case.base));
-        black_box(target.relative(base))
+        black_box(target.relative(base).into_owned())
       });
     });
   }
