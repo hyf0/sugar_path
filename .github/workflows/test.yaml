@@ -3,6 +3,9 @@ name: Test
 on:
   pull_request:
   push:
+    # Feature-branch pushes already run via pull_request; only re-check main after merge.
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       allocation_snapshot_mode:
@@ -17,11 +20,33 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash
 
 jobs:
+  # Host-independent checks once; do not pay for them on every OS matrix cell.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          components: rustfmt
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --workspace --all-features --no-deps
+
   test:
     name: Test ${{ matrix.os }}
     strategy:
@@ -35,15 +60,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0
-          components: rustfmt, clippy
-      - name: Lint
-        run: |
-          cargo fmt --all --check
-          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-      - name: Documentation
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo doc --locked --workspace --all-features --no-deps
+          components: clippy
+      # Clippy stays on each OS: platform-gated imports only fail under that target.
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Test default features
         run: cargo test --locked --workspace
       - name: Test all features
