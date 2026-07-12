@@ -1,54 +1,65 @@
 # Performance baselines
 
-SugarPath treats performance as three related but different questions. Criterion measures wall time on the current machine, CodSpeed tracks CPU and memory behavior in a controlled environment, and the allocation task records exact allocator calls plus requested bytes. No one number substitutes for the others.
+SugarPath treats performance as three related but different questions. Criterion measures wall time on the current machine, CodSpeed CPU simulation tracks instructions and cache-sensitive equivalent cycles, and the allocation task records exact allocator calls plus requested bytes. No one number substitutes for the others.
 
 ## Workloads
 
-Rolldown is the primary consumer, so the suite includes path lengths, component depths, and composed outputs shaped like its call sites. It also keeps short paths, dirty paths, leading parents, current-directory spellings, invalid native encoding, and Windows root forms visible so a fast common case cannot hide a regression elsewhere.
+Rolldown is the primary consumer. The benchmark paths are public repository paths sampled from Rolldown commit `b9823050bc658ef65105148ea0504d4fbda7fa4c`. All 12,287 tracked repository-relative paths are included in the distribution: p50 is 75 bytes and 7 components, p90 is 102 bytes and 9 components, and p99 is 129 bytes and 10 components. The synthetic Unix absolute paths add the 20-byte `/workspace/rolldown/` prefix. Reproduce the numbers with `bash benchmarks/rolldown-path-distribution.sh /path/to/rolldown`. The suite separately names fast paths, slow paths, relative inputs, Windows roots, and composed Rolldown call patterns so one class cannot hide another's regression.
 
-Every timed benchmark black-boxes both input and output. Setup that is not part of the consumer operation stays outside the measured closure. A benchmark that intentionally measures a batch declares byte or element throughput. The timed binaries use mimalloc 0.1.64 to match Rolldown.
+Every timed benchmark black-boxes both input and output. Setup that is not part of the consumer operation stays outside the measured closure. A benchmark that intentionally measures a batch declares byte or element throughput. Owned-output controls prepare their `PathBuf` outside the timed closure, while join and relative pipelines keep the work performed by the Rolldown-shaped caller inside it. The final-API matrix names the output shape explicitly: the main `relative -> Cow<Path>` result, `Cow::into_owned -> PathBuf`, borrowed strict slash conversion, and the ordinary strict consuming `relative(base).into_owned().into_slash() -> String` composition. Direct `Path` and `str` receiver rows keep receiver-specific cost visible. No current row represents a public fused relative-to-string API. Relative-output controls also include Rolldown's pinned `ArcStr` 1.2.0 final container because converting from `String` or `Cow<str>` performs another allocation and copy; a string-only result is not the end-to-end consumer cost for those call sites. The package-sideEffects controls compare the main Cow result with a `strip_prefix` plus relative-fallback control for both descendant and upward shapes. The pinned ThreeJS/Rome trace records 4,888 descendant hits and two upward misses for that exact caller, so its hit and miss costs must be combined at that caller-specific weight rather than judged from the zero-allocation hit alone.
 
-Benchmark and allocation scenario names describe inputs and requested output shapes. Keep those identities unchanged when an implementation starts borrowing, consumes an owned buffer, or removes an intermediate value. Implementation-specific alternatives may use separate control names, but the public-operation row must remain stable so CodSpeed and committed allocation snapshots can compare the baseline with a later optimization.
+Benchmark and allocation scenario names describe inputs and requested output shapes. Keep accepted identities unchanged when an implementation starts borrowing, consumes an owned buffer, or removes an intermediate value. Implementation-specific alternatives may use separate control names only when they measure additional work; do not duplicate an existing timed operation under a mechanism-specific name. Stable public-operation rows let CodSpeed and saved Criterion baselines compare the accepted baseline with later implementations.
 
-In paired timing rows, `borrowed_receiver` means the operation receives a borrowed path view, while `owned_receiver` reserves the same final-output contract for an operation that may consume a prepared `PathBuf`. `natural_result` means the method's direct public return value; `pathbuf_result`, `string_result`, and the ArcStr slash labels name the requested intermediate or final container explicitly. When v2 has no consuming method, its owned-receiver control deliberately repeats the borrowed implementation so a later consuming implementation can retain the ID and change only the ownership mechanism.
+In paired timing rows, `borrowed_receiver` means the operation receives a borrowed path view, while `owned_receiver` reserves the same final-output contract for an operation that may consume a prepared `PathBuf`. `natural_result` means the method's direct public return value; `pathbuf_result`, `string_result`, and the ArcStr slash labels name the requested intermediate or final container explicitly. The v2 baseline duplicates a borrowed implementation where it had no consuming method, allowing the final consuming implementation to retain the ID while changing only the ownership mechanism.
 
-Rows whose public path spelling or root semantics intentionally change in the breaking API are contract coverage, not same-output speed comparisons. In particular, do not use the trailing-separator or dot-separator normalization rows, or the Windows verbatim-UNC different-share relative row, to claim an algorithmic speedup against this baseline: the later API returns a deliberately different value in those cases. Keep them in the suite so the cost of the selected contract remains visible, and base same-output performance claims on rows whose exact result is unchanged.
+Rows whose public path spelling or root semantics intentionally change in the breaking API are contract coverage, not same-output speed comparisons. In particular, do not use the trailing-separator or dot-separator normalization rows, or the Windows verbatim-UNC different-share relative row, to claim an algorithmic speedup against the baseline: the final API deliberately returns a different value in those cases. Keep them in the suite so the cost of the selected contract remains visible, and base same-output performance claims on rows whose exact result is unchanged.
+
+The benchmark binaries use mimalloc 0.1.64 because Rolldown uses the same allocator. Oxc's never-grow-in-place benchmark allocator was considered but is not the default here: it produces a stable worst-case reallocation cost, while the primary goal is to predict Rolldown. Use it only as a separate diagnostic if real allocator variance prevents a decision.
 
 ## Commands
 
-Run the full local timing suite in both the public default configuration and the `cached_current_dir` configuration:
+Run the full local timing suite in both the public default configuration and Rolldown's `cached_current_dir` configuration:
 
-```sh
+```bash
 cargo bench --locked
 cargo bench --locked --features cached_current_dir
 ```
 
 Save a local Criterion baseline before an experiment, then compare the experiment against it:
 
-```sh
+```bash
 cargo bench --locked --bench absolutize --bench normalize --bench relative --bench to_slash --bench as_path --bench rolldown -- --save-baseline before-default
 cargo bench --locked --bench absolutize --bench normalize --bench relative --bench to_slash --bench as_path --bench rolldown -- --baseline before-default
 cargo bench --locked --features cached_current_dir --bench absolutize --bench normalize --bench relative --bench to_slash --bench as_path --bench rolldown -- --save-baseline before-rolldown
 cargo bench --locked --features cached_current_dir --bench absolutize --bench normalize --bench relative --bench to_slash --bench as_path --bench rolldown -- --baseline before-rolldown
 ```
 
-The explicit `--bench` selectors are required when forwarding Criterion-only arguments; otherwise Cargo also passes them to the library test harness. Use `cargo bench --locked --bench rolldown -- --quick` for a smoke test.
+The explicit `--bench` selectors are required when forwarding Criterion-only arguments; otherwise Cargo also passes them to the library test harness, which rejects them. A full two-configuration run takes several minutes because every named case gets a three-second warm-up and roughly five seconds of sampling. Use `cargo bench --locked --bench rolldown -- --quick` for a smoke test.
 
 Criterion data lives under `target/criterion` and is not committed because wall time is machine-specific. Record the exact baseline commit, `rustc -Vv`, target, allocator, and command when reporting a result.
 
-Generate or verify allocation snapshots for the current native target:
+Regenerate the allocation snapshot for the current target:
 
-```sh
+```bash
 cargo allocs --write benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-default.snap
 cargo allocs-rolldown --write benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-rolldown.snap
+```
+
+Verify an existing snapshot:
+
+```bash
 cargo allocs --check benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-default.snap
 cargo allocs-rolldown --check benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-rolldown.snap
 ```
 
-Allocation counts and reallocations are the cross-run gate. Requested bytes remain target-, feature-, and current-directory-shape-specific evidence rather than a portable invariant.
+Allocation counts and reallocations are the cross-run gate. Requested bytes are recorded because they expose repeated short-lived buffers in this crate, but they remain target-, feature-, and current-directory-shape-specific evidence rather than a portable invariant.
 
-CodSpeed runs the same Criterion suite on Linux in simulation and memory modes. Native GitHub-hosted Linux and Windows runners check their allocation snapshots; macOS ARM64 evidence is recorded from a native Apple Silicon host. The Docker/Wine Windows-GNU instructions in [Windows GNU execution](./windows-gnu.md) are optional reproduction material, not part of normal development or CI. Do not run them unless the document's explicit local-execution gate is satisfied.
+CodSpeed runs the Rolldown configuration of the same Criterion suite in two modes on Linux: `simulation` records executed instructions, L1/last-level cache effects, equivalent cycles, and profiles; `memory` records allocator activity and peak heap behavior. Branch misses are not a continuous gate. Use Linux Callgrind with branch simulation only when a concrete branch-layout hypothesis needs diagnosis.
+
+The current final-API snapshots were reproduced natively on macOS ARM64 in both configurations. They record zero allocation calls for canonical descendant `relative -> Cow<Path>`, one for `Cow::into_owned`, one for each descendant and upward strict final-`String` composition, zero for clean `PathBuf::into_normalized`, zero for valid-Unicode `PathBuf::into_slash`, and no fresh allocation plus one growth reallocation when a clean relative receiver consumes an owned cwd through `absolutize_with`. Requested bytes remain platform-specific.
+
+The checked-in final-API matrix contains native macOS ARM64, Linux x86_64 GNU, and Windows x86_64 MSVC snapshots in both configurations. Green GitHub Actions run [`29167568157`](https://github.com/hyf0/sugar_path/actions/runs/29167568157) verifies the Linux and Windows files, and CI continuously checks both targets. The older Windows-GNU snapshots were removed rather than relabeled; the pinned Docker/Wine commands in [Windows GNU execution](./windows-gnu.md) remain an opt-in historical reproduction reference and were not run for this revision. Non-container GNU and MSVC cross-compilation also provides Windows build evidence. Native Windows timing is still required before making Windows-specific speed claims, while CodSpeed remains the continuous Linux CPU and memory view.
 
 ## Baseline rule
 
-An accepted baseline contains the workload definitions, stable benchmark identities, pinned toolchain and dependency lock, native allocation snapshots, and green checks. Merge and run that baseline on the default branch before evaluating an optimization PR. Later performance changes keep the comparable identities intact and report allocation data plus CodSpeed or same-machine Criterion results against that accepted baseline.
+The first accepted baseline is a commit containing the workload definitions, toolchain and dependency lock, allocation snapshots, and green checks. Implementation optimizations start only after that commit. Each later performance commit names the affected workload and compares allocation data plus CodSpeed or same-machine Criterion results against the baseline or the immediately preceding accepted commit.

@@ -1,148 +1,939 @@
 use std::{
   borrow::Cow,
-  ffi::OsString,
+  ffi::{OsStr, OsString},
+  io,
   iter::Peekable,
-  ops::Deref,
   path::{Component, Path, PathBuf},
 };
 
 use memchr::{memchr, memrchr};
 use smallvec::SmallVec;
 
-use crate::{SugarPath, utils::get_current_dir};
+use crate::{SugarPath, utils::try_get_current_dir};
 
 type StrVec<'a> = SmallVec<[&'a str; 8]>;
+type OsStrVec<'a> = SmallVec<[&'a OsStr; 16]>;
 
-impl SugarPath for Path {
-  fn normalize(&self) -> Cow<'_, Path> {
-    if !needs_normalization(self) {
-      return Cow::Borrowed(self);
-    }
-    normalize_inner(self.components().peekable(), self.as_os_str().len())
-  }
+enum OwnedNormalizeOutcome {
+  Unchanged,
+  CurrentDirectory,
+  Owned(PathBuf),
+}
 
-  fn absolutize(&self) -> Cow<'_, Path> {
-    self.absolutize_with(get_current_dir())
-  }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TrailingSeparator {
+  Preserve,
+  Strip,
+}
 
-  // NOTE: the return lifetime is tied to `&self` (not `'a`).
-  // Unifying them (`&'a self, Cow<'a, Path>) -> Cow<'a, ...>`) would allow
-  // borrowing from `base` for noop cases ("", "."), but it constrains callers:
-  // base's borrowed data must outlive self. Callers needing "".absolutize_with(base)
-  // can just call base.absolutize() directly.
-  fn absolutize_with<'a>(&self, base: Cow<'a, Path>) -> Cow<'_, Path> {
-    if self.is_absolute() {
-      return self.normalize();
-    }
+enum RelativeOutcome<'a> {
+  BorrowedNative(&'a Path),
+  Native(PathBuf),
+  Slash(String),
+}
 
-    let mut base =
-      if base.is_absolute() { base } else { Cow::Owned(base.absolutize().into_owned()) };
-
-    if cfg!(target_family = "windows") {
-      // Consider c:
-      let mut components = self.components().peekable();
-      if matches!(components.peek(), Some(Component::Prefix(_)))
-        && !matches!(components.peek(), Some(Component::RootDir))
-      {
-        // TODO: Windows has the concept of drive-specific current working
-        // directories. If we've resolved a drive letter but not yet an
-        // absolute path, get cwd for that drive, or the process cwd if
-        // the drive cwd is not available. We're sure the device is not
-        // a UNC path at this points, because UNC paths are always absolute.
-        let mut components: SmallVec<[Component; 8]> = components.collect();
-        components.insert(1, Component::RootDir);
-        Cow::Owned(
-          normalize_inner(components.into_iter().peekable(), self.as_os_str().len()).into_owned(),
-        )
-      } else {
-        base.to_mut().push(self);
-        Cow::Owned(base.normalize().into_owned())
+impl<'a> RelativeOutcome<'a> {
+  fn into_path_buf(self) -> PathBuf {
+    match self {
+      Self::BorrowedNative(path) => path.to_owned(),
+      Self::Native(path) => path,
+      Self::Slash(path) => {
+        #[cfg(target_family = "windows")]
+        {
+          PathBuf::from(path.replace('/', "\\"))
+        }
+        #[cfg(not(target_family = "windows"))]
+        {
+          PathBuf::from(path)
+        }
       }
-    } else {
-      base.to_mut().push(self);
-      Cow::Owned(base.normalize().into_owned())
     }
   }
 
-  fn relative(&self, to: impl AsRef<Path>) -> PathBuf {
-    let base_ref = to.as_ref();
+  fn into_cow_path(self) -> Cow<'a, Path> {
+    match self {
+      Self::BorrowedNative(path) => Cow::Borrowed(path),
+      outcome => Cow::Owned(outcome.into_path_buf()),
+    }
+  }
+}
 
-    // Fast path: when both paths are absolute and valid UTF-8, use
-    // memchr-accelerated string operations to avoid absolutize() overhead
-    // and intermediate PathBuf allocations.
-    if self.is_absolute()
-      && base_ref.is_absolute()
-      && let (Some(target_str), Some(base_str)) = (self.to_str(), base_ref.to_str())
-    {
+#[derive(Clone, Copy)]
+struct LexicalRelativeShape {
+  unresolved_parents: usize,
+  surviving_normals: usize,
+  max_normal_depth: usize,
+}
+
+fn classify_lexical_relative(path: &Path) -> Option<LexicalRelativeShape> {
+  let mut unresolved_parents = 0;
+  let mut surviving_normals = 0;
+  let mut max_normal_depth = 0;
+
+  for component in path.components() {
+    match component {
+      Component::CurDir => {}
+      Component::ParentDir => {
+        if surviving_normals > 0 {
+          surviving_normals -= 1;
+        } else {
+          unresolved_parents += 1;
+        }
+      }
+      Component::Normal(_) => {
+        surviving_normals += 1;
+        max_normal_depth = max_normal_depth.max(surviving_normals);
+      }
+      Component::Prefix(_) | Component::RootDir => return None,
+    }
+  }
+
+  Some(LexicalRelativeShape { unresolved_parents, surviving_normals, max_normal_depth })
+}
+
+fn collect_lexical_normals<'a>(path: &'a Path, shape: LexicalRelativeShape) -> OsStrVec<'a> {
+  let mut normals = OsStrVec::with_capacity(shape.max_normal_depth);
+  for component in path.components() {
+    match component {
+      Component::CurDir => {}
+      Component::ParentDir => {
+        normals.pop();
+      }
+      Component::Normal(normal) => normals.push(normal),
+      Component::Prefix(_) | Component::RootDir => {
+        unreachable!("classified lexical relative paths have no prefix or root")
+      }
+    }
+  }
+  debug_assert_eq!(normals.len(), shape.surviving_normals);
+  normals
+}
+
+fn try_relative_lexically(target: &Path, base: &Path) -> Option<PathBuf> {
+  let target_shape = classify_lexical_relative(target)?;
+  let base_shape = classify_lexical_relative(base)?;
+  if target_shape.unresolved_parents != base_shape.unresolved_parents {
+    return None;
+  }
+
+  let target = collect_lexical_normals(target, target_shape);
+  let base = collect_lexical_normals(base, base_shape);
+
+  let common_len = target
+    .iter()
+    .zip(&base)
+    .take_while(|(target, base)| {
       #[cfg(target_family = "windows")]
       {
-        let target_fwd = normalize_backslash_cow(target_str);
-        let base_fwd = normalize_backslash_cow(base_str);
-        if let (Some((target_root, target_rest)), Some((base_root, base_rest))) =
-          (split_windows_root(&target_fwd), split_windows_root(&base_fwd))
-        {
-          if target_root.eq_ignore_ascii_case(base_root) {
-            // Same root: compute relative path with case-insensitive comparison
-            let result = relative_str(target_rest, base_rest);
-            return PathBuf::from(result.replace('/', "\\"));
-          }
-          // Different roots: return normalized target (no current_dir needed)
-          return self.normalize().into_owned();
-        }
-        // Unrecognized prefix format: fall through to component-based path
+        target.eq_ignore_ascii_case(base)
       }
       #[cfg(not(target_family = "windows"))]
       {
-        return PathBuf::from(relative_str(target_str, base_str));
+        target == base
       }
+    })
+    .count();
+
+  let up_len = base.len() - common_len;
+  let target_suffix = &target[common_len..];
+  #[cfg(target_family = "windows")]
+  if up_len == 0
+    && target_suffix.first().is_some_and(|component| {
+      !windows_standalone_relative_bytes_are_representable(component.as_encoded_bytes())
+    })
+  {
+    return None;
+  }
+  let component_count = up_len + target_suffix.len();
+  let capacity = up_len * 2
+    + target_suffix.iter().map(|component| component.len()).sum::<usize>()
+    + component_count.saturating_sub(1);
+  #[cfg(target_family = "windows")]
+  {
+    let mut relative = OsString::with_capacity(capacity);
+    for _ in 0..up_len {
+      push_windows_relative_component(&mut relative, OsStr::new(".."));
     }
+    for component in target_suffix {
+      push_windows_relative_component(&mut relative, component);
+    }
+    Some(PathBuf::from(relative))
+  }
+  #[cfg(not(target_family = "windows"))]
+  let mut relative = PathBuf::with_capacity(capacity);
+  #[cfg(not(target_family = "windows"))]
+  for _ in 0..up_len {
+    relative.push(Component::ParentDir);
+  }
+  #[cfg(not(target_family = "windows"))]
+  for component in target_suffix {
+    relative.push(component);
+  }
+  #[cfg(not(target_family = "windows"))]
+  Some(relative)
+}
 
-    // Slow path: avoid current_dir() syscall for already-absolute paths
-    let base = if base_ref.is_absolute() {
-      base_ref.normalize().into_owned()
-    } else {
-      base_ref.absolutize().into_owned()
-    };
-    let target = if self.is_absolute() {
-      self.normalize().into_owned()
-    } else {
-      self.absolutize().into_owned()
-    };
-    if base == target {
-      PathBuf::new()
-    } else {
-      // Filter components inline
-      let filter_fn = |com: &Component| {
-        matches!(com, Component::Normal(_) | Component::Prefix(_) | Component::RootDir)
-      };
+#[cfg(target_family = "windows")]
+fn classify_drive_relative(path: &Path) -> Option<(u8, LexicalRelativeShape)> {
+  use std::path::Prefix;
 
-      // Iterate components without intermediate allocation
-      let base_components = base.components().filter(filter_fn);
-      let target_components = target.components().filter(filter_fn);
+  if path.has_root() {
+    return None;
+  }
+  let mut components = path.components();
+  let Component::Prefix(prefix) = components.next()? else {
+    return None;
+  };
+  let Prefix::Disk(parsed_drive) = prefix.kind() else {
+    return None;
+  };
+  let drive = windows_drive_spelling(path).unwrap_or(parsed_drive);
 
-      // Find common prefix length
-      let common_len = base_components
-        .clone()
-        .zip(target_components.clone())
-        .take_while(|(from, to)| {
-          // Handle Windows case-insensitive comparison
-          if cfg!(target_family = "windows")
-            && let (Component::Normal(from_seg), Component::Normal(to_seg)) = (from, to)
-          {
-            return from_seg.eq_ignore_ascii_case(to_seg);
-          }
-          from == to
-        })
-        .count();
-
-      // Build the result path without repeated PathBuf::push allocations
-      let up_len = base_components.count().saturating_sub(common_len);
-
-      (0..up_len).map(|_| Component::ParentDir).chain(target_components.skip(common_len)).collect()
+  let mut unresolved_parents = 0;
+  let mut surviving_normals = 0;
+  let mut max_normal_depth = 0;
+  for component in components {
+    match component {
+      Component::CurDir => {}
+      Component::ParentDir => {
+        if surviving_normals > 0 {
+          surviving_normals -= 1;
+        } else {
+          unresolved_parents += 1;
+        }
+      }
+      Component::Normal(_) => {
+        surviving_normals += 1;
+        max_normal_depth = max_normal_depth.max(surviving_normals);
+      }
+      Component::Prefix(_) | Component::RootDir => return None,
     }
   }
 
-  fn to_slash<'a>(&'a self) -> Option<Cow<'a, str>> {
+  Some((drive, LexicalRelativeShape { unresolved_parents, surviving_normals, max_normal_depth }))
+}
+
+#[cfg(target_family = "windows")]
+fn windows_drive_spelling(path: &Path) -> Option<u8> {
+  let bytes = path.as_os_str().as_encoded_bytes();
+  if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+    return Some(bytes[0]);
+  }
+  if bytes.len() >= 6
+    && matches!(bytes[0], b'/' | b'\\')
+    && matches!(bytes[1], b'/' | b'\\')
+    && bytes[2] == b'?'
+    && matches!(bytes[3], b'/' | b'\\')
+    && bytes[5] == b':'
+    && bytes[4].is_ascii_alphabetic()
+  {
+    return Some(bytes[4]);
+  }
+  None
+}
+
+#[cfg(target_family = "windows")]
+fn push_windows_relative_component(path: &mut OsString, component: &OsStr) {
+  if !path.is_empty() {
+    path.push("\\");
+  }
+  path.push(component);
+}
+
+#[cfg(target_family = "windows")]
+fn push_windows_path_component(
+  path: &mut OsString,
+  component: &OsStr,
+  forward_slash_is_separator: bool,
+) {
+  let has_separator = matches!(path.as_encoded_bytes().last(), Some(b'\\'))
+    || (forward_slash_is_separator && matches!(path.as_encoded_bytes().last(), Some(b'/')));
+  if !path.is_empty() && !has_separator {
+    path.push("\\");
+  }
+  path.push(component);
+}
+
+#[cfg(target_family = "windows")]
+fn collect_drive_relative_normals(path: &Path, shape: LexicalRelativeShape) -> OsStrVec<'_> {
+  let mut normals = OsStrVec::with_capacity(shape.max_normal_depth);
+  for component in path.components().skip(1) {
+    match component {
+      Component::CurDir => {}
+      Component::ParentDir => {
+        normals.pop();
+      }
+      Component::Normal(normal) => normals.push(normal),
+      Component::Prefix(_) | Component::RootDir => {
+        unreachable!("classified drive-relative paths have one prefix and no root")
+      }
+    }
+  }
+  debug_assert_eq!(normals.len(), shape.surviving_normals);
+  normals
+}
+
+#[cfg(target_family = "windows")]
+fn try_relative_drive_lexically(target: &Path, base: &Path) -> Option<PathBuf> {
+  let (target_drive, target_shape) = classify_drive_relative(target)?;
+  let (base_drive, base_shape) = classify_drive_relative(base)?;
+  if !target_drive.eq_ignore_ascii_case(&base_drive)
+    || target_shape.unresolved_parents != base_shape.unresolved_parents
+  {
+    return None;
+  }
+
+  let target = collect_drive_relative_normals(target, target_shape);
+  let base = collect_drive_relative_normals(base, base_shape);
+  let common_len =
+    target.iter().zip(&base).take_while(|(target, base)| target.eq_ignore_ascii_case(base)).count();
+  let up_len = base.len() - common_len;
+  let target_suffix = &target[common_len..];
+  if up_len == 0
+    && target_suffix.first().is_some_and(|component| {
+      !windows_standalone_relative_bytes_are_representable(component.as_encoded_bytes())
+    })
+  {
+    return None;
+  }
+  let component_count = up_len + target_suffix.len();
+  let capacity = up_len * 2
+    + target_suffix.iter().map(|component| component.len()).sum::<usize>()
+    + component_count.saturating_sub(1);
+  let mut relative = OsString::with_capacity(capacity);
+  for _ in 0..up_len {
+    push_windows_relative_component(&mut relative, OsStr::new(".."));
+  }
+  for component in target_suffix {
+    push_windows_relative_component(&mut relative, component);
+  }
+  Some(PathBuf::from(relative))
+}
+
+#[cfg(target_family = "windows")]
+fn windows_absolute_disk_drive(path: &Path) -> Option<(u8, bool)> {
+  use std::path::Prefix;
+
+  let Component::Prefix(prefix) = path.components().next()? else {
+    return None;
+  };
+  match prefix.kind() {
+    Prefix::Disk(drive) => Some((windows_drive_spelling(path).unwrap_or(drive), true)),
+    Prefix::VerbatimDisk(drive) => Some((windows_drive_spelling(path).unwrap_or(drive), false)),
+    _ => None,
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn rebuild_windows_disk_path(path: &Path, drive: u8) -> Option<PathBuf> {
+  let mut rebuilt = OsString::with_capacity(path.as_os_str().len().max(3));
+  let prefix = [drive, b':', b'\\'];
+  rebuilt.push(std::str::from_utf8(&prefix).expect("Windows drive prefix is ASCII"));
+  for component in path.components() {
+    match component {
+      Component::Prefix(_) | Component::RootDir | Component::CurDir => {}
+      Component::ParentDir | Component::Normal(_) => {
+        if memchr(b'/', component.as_os_str().as_encoded_bytes()).is_some() {
+          return None;
+        }
+        push_windows_path_component(&mut rebuilt, component.as_os_str(), true);
+      }
+    }
+  }
+  Some(PathBuf::from(rebuilt))
+}
+
+#[cfg(target_family = "windows")]
+fn rebuild_windows_verbatim_disk_path(path: &Path, drive: u8) -> PathBuf {
+  let mut rebuilt = OsString::with_capacity(path.as_os_str().len().max(7));
+  let prefix = [b'\\', b'\\', b'?', b'\\', drive, b':', b'\\'];
+  rebuilt.push(std::str::from_utf8(&prefix).expect("Windows verbatim drive prefix is ASCII"));
+  for component in path.components() {
+    match component {
+      Component::Prefix(_) | Component::RootDir | Component::CurDir => {}
+      Component::ParentDir | Component::Normal(_) => {
+        push_windows_path_component(&mut rebuilt, component.as_os_str(), false);
+      }
+    }
+  }
+  PathBuf::from(rebuilt)
+}
+
+#[cfg(target_family = "windows")]
+fn preserve_windows_drive_spelling(path: PathBuf, drive: u8) -> PathBuf {
+  match windows_absolute_disk_drive(&path) {
+    Some((actual, true)) if actual == drive => path,
+    Some((actual, true)) if actual.eq_ignore_ascii_case(&drive) => {
+      rebuild_windows_disk_path(&path, drive).unwrap_or(path)
+    }
+    Some((actual, false)) if actual.eq_ignore_ascii_case(&drive) => {
+      rebuild_windows_verbatim_disk_path(&path, drive)
+    }
+    _ => path,
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn absolutize_drive_relative_with<P>(path: &Path, cwd: P, drive: u8) -> Cow<'_, Path>
+where
+  P: AsRef<Path> + Into<PathBuf>,
+{
+  let Some((cwd_drive, ordinary_disk)) = windows_absolute_disk_drive(cwd.as_ref()) else {
+    return normalize_for_resolution(path);
+  };
+  if !cwd_drive.eq_ignore_ascii_case(&drive) {
+    return normalize_for_resolution(path);
+  }
+
+  let resolved = if cwd_drive == drive {
+    cwd.into()
+  } else if ordinary_disk {
+    rebuild_windows_disk_path(cwd.as_ref(), drive)
+      .expect("ordinary Windows disk components contain no literal forward slash")
+  } else {
+    rebuild_windows_verbatim_disk_path(cwd.as_ref(), drive)
+  };
+  let mut resolved = resolved.into_os_string();
+  for component in path.components().skip(1) {
+    push_windows_path_component(&mut resolved, component.as_os_str(), ordinary_disk);
+  }
+  Cow::Owned(normalize_owned_for_resolution(PathBuf::from(resolved)))
+}
+
+fn normalize_owned_path_buf_with(mut path: PathBuf, trailing: TrailingSeparator) -> PathBuf {
+  let outcome = match normalize_path(&path, trailing) {
+    Cow::Borrowed(normalized) if std::ptr::eq(normalized, path.as_path()) => {
+      OwnedNormalizeOutcome::Unchanged
+    }
+    Cow::Borrowed(normalized) if normalized.as_os_str() == OsStr::new(".") => {
+      OwnedNormalizeOutcome::CurrentDirectory
+    }
+    Cow::Borrowed(normalized) => OwnedNormalizeOutcome::Owned(normalized.to_owned()),
+    Cow::Owned(normalized) => OwnedNormalizeOutcome::Owned(normalized),
+  };
+
+  match outcome {
+    OwnedNormalizeOutcome::Unchanged => path,
+    OwnedNormalizeOutcome::CurrentDirectory => {
+      path.clear();
+      path.push(".");
+      path
+    }
+    OwnedNormalizeOutcome::Owned(normalized) => normalized,
+  }
+}
+
+pub(crate) fn normalize_owned_path_buf(path: PathBuf) -> PathBuf {
+  normalize_owned_path_buf_with(path, TrailingSeparator::Preserve)
+}
+
+fn normalize_owned_for_resolution(path: PathBuf) -> PathBuf {
+  normalize_owned_path_buf_with(path, TrailingSeparator::Strip)
+}
+
+fn normalize_path(path: &Path, trailing: TrailingSeparator) -> Cow<'_, Path> {
+  if !needs_normalization(path, trailing) {
+    return Cow::Borrowed(path);
+  }
+  normalize_inner(
+    path.components().peekable(),
+    path.as_os_str().len(),
+    trailing == TrailingSeparator::Preserve && has_trailing_separator(path),
+    {
+      #[cfg(target_family = "windows")]
+      {
+        windows_drive_spelling(path)
+      }
+      #[cfg(not(target_family = "windows"))]
+      {
+        None
+      }
+    },
+  )
+}
+
+fn normalize_for_resolution(path: &Path) -> Cow<'_, Path> {
+  normalize_path(path, TrailingSeparator::Strip)
+}
+
+#[inline]
+fn has_trailing_separator(path: &Path) -> bool {
+  let Some(last) = path.as_os_str().as_encoded_bytes().last() else {
+    return false;
+  };
+  if *last == std::path::MAIN_SEPARATOR as u8 {
+    return true;
+  }
+
+  #[cfg(target_family = "windows")]
+  {
+    *last == b'/'
+      && !matches!(
+        path.components().next(),
+        Some(Component::Prefix(prefix))
+          if windows_prefix_is_verbatim(prefix.kind())
+      )
+  }
+  #[cfg(not(target_family = "windows"))]
+  {
+    false
+  }
+}
+
+fn replace_main_separator_in_owned(mut string: String) -> String {
+  if std::path::MAIN_SEPARATOR == '/' {
+    string
+  } else {
+    let mut offset = 0;
+    while let Some(position) = memchr(std::path::MAIN_SEPARATOR as u8, &string.as_bytes()[offset..])
+    {
+      let separator = offset + position;
+      string.replace_range(separator..=separator, "/");
+      offset = separator + 1;
+    }
+    string
+  }
+}
+
+pub(crate) fn try_path_buf_into_slash(path: PathBuf) -> Result<String, PathBuf> {
+  match path.into_os_string().into_string() {
+    Ok(string) => Ok(replace_main_separator_in_owned(string)),
+    Err(path) => Err(PathBuf::from(path)),
+  }
+}
+
+pub(crate) fn path_buf_into_slash(path: PathBuf) -> String {
+  try_path_buf_into_slash(path).expect("path is not valid Unicode")
+}
+
+pub(crate) fn path_buf_into_slash_lossy(path: PathBuf) -> String {
+  match try_path_buf_into_slash(path) {
+    Ok(string) => string,
+    Err(path) => replace_main_separator_in_owned(path.to_string_lossy().into_owned()),
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn windows_absolute_parts(path: &Path) -> Option<(std::path::Prefix<'_>, &Path)> {
+  let mut components = path.components();
+  let Component::Prefix(prefix) = components.next()? else {
+    return None;
+  };
+  if matches!(components.clone().next(), Some(Component::RootDir)) {
+    components.next();
+  }
+  Some((prefix.kind(), components.as_path()))
+}
+
+#[cfg(target_family = "windows")]
+fn windows_prefix_is_verbatim(prefix: std::path::Prefix<'_>) -> bool {
+  matches!(
+    prefix,
+    std::path::Prefix::Verbatim(_)
+      | std::path::Prefix::VerbatimDisk(_)
+      | std::path::Prefix::VerbatimUNC(_, _)
+  )
+}
+
+#[cfg(target_family = "windows")]
+fn windows_standalone_relative_is_representable(path: &str) -> bool {
+  windows_standalone_relative_bytes_are_representable(path.as_bytes())
+}
+
+#[cfg(target_family = "windows")]
+fn windows_standalone_relative_bytes_are_representable(path: &[u8]) -> bool {
+  !matches!(path.first(), Some(b'/' | b'\\'))
+    && !(path.len() >= 2 && path[0].is_ascii_alphabetic() && path[1] == b':')
+}
+
+#[cfg(target_family = "windows")]
+fn windows_relative_component_has_literal_slash(component: &Component<'_>) -> bool {
+  let Component::Normal(component) = component else {
+    return false;
+  };
+  memchr(b'/', component.as_encoded_bytes()).is_some()
+}
+
+#[cfg(target_family = "windows")]
+fn windows_native_relative_input_is_clean(path: &str) -> bool {
+  if memchr(b'/', path.as_bytes()).is_some() {
+    return false;
+  }
+
+  let path = path.trim_end_matches('\\');
+  let mut offset = 0;
+  while offset < path.len() {
+    let end = memchr(b'\\', &path.as_bytes()[offset..])
+      .map(|position| offset + position)
+      .unwrap_or(path.len());
+    let component = &path[offset..end];
+    if component.is_empty() || component == "." || component == ".." {
+      return false;
+    }
+    offset = end.saturating_add(1);
+  }
+  true
+}
+
+#[cfg(target_family = "windows")]
+fn relative_windows_native_fast<'a>(target: &'a str, base: &str) -> Option<RelativeOutcome<'a>> {
+  if !windows_native_relative_input_is_clean(target)
+    || !windows_native_relative_input_is_clean(base)
+  {
+    return None;
+  }
+
+  let target = target.trim_end_matches('\\');
+  let base = base.trim_end_matches('\\');
+  let common_byte_len = target
+    .as_bytes()
+    .iter()
+    .zip(base.as_bytes())
+    .take_while(|(target, base)| target.eq_ignore_ascii_case(base))
+    .count();
+  let at_boundary = (common_byte_len == target.len() && common_byte_len == base.len())
+    || (common_byte_len == target.len() && base.as_bytes().get(common_byte_len) == Some(&b'\\'))
+    || (common_byte_len == base.len() && target.as_bytes().get(common_byte_len) == Some(&b'\\'));
+  let common_prefix = if at_boundary {
+    common_byte_len
+  } else {
+    memrchr(b'\\', &target.as_bytes()[..common_byte_len]).unwrap_or(0)
+  };
+
+  let base_remaining = &base.as_bytes()[common_prefix..];
+  let mut ups = 0usize;
+  let mut offset = 0;
+  while offset < base_remaining.len() {
+    if base_remaining[offset] == b'\\' {
+      offset += 1;
+      continue;
+    }
+    ups += 1;
+    offset = memchr(b'\\', &base_remaining[offset..])
+      .map(|position| offset + position + 1)
+      .unwrap_or(base_remaining.len());
+  }
+
+  let target_suffix = target[common_prefix..].trim_start_matches('\\');
+  if ups == 0 {
+    if !windows_standalone_relative_is_representable(target_suffix) {
+      return None;
+    }
+    return Some(RelativeOutcome::BorrowedNative(Path::new(target_suffix)));
+  }
+
+  let mut relative = String::with_capacity(ups * 3 + target_suffix.len());
+  for _ in 0..ups {
+    if !relative.is_empty() {
+      relative.push('\\');
+    }
+    relative.push_str("..");
+  }
+  if !target_suffix.is_empty() {
+    relative.push('\\');
+    relative.push_str(target_suffix);
+  }
+  Some(RelativeOutcome::Native(PathBuf::from(relative)))
+}
+
+#[cfg(target_family = "windows")]
+fn try_relative_windows_absolute<'a>(
+  target_path: &'a Path,
+  base_path: &Path,
+) -> Option<RelativeOutcome<'a>> {
+  let (target_prefix, target_rest) = windows_absolute_parts(target_path)?;
+  let (base_prefix, base_rest) = windows_absolute_parts(base_path)?;
+  if !windows_prefixes_eq_ignore_ascii_case(target_prefix, base_prefix) {
+    return Some(RelativeOutcome::Native(normalize_for_resolution(target_path).into_owned()));
+  }
+
+  // A forward slash is a literal byte inside a verbatim path component. The
+  // normalized-string fallback would reinterpret it as a separator, so let
+  // the component fallback retain the native `std::path` meaning instead.
+  if windows_prefix_is_verbatim(target_prefix)
+    && (memchr(b'/', target_rest.as_os_str().as_encoded_bytes()).is_some()
+      || memchr(b'/', base_rest.as_os_str().as_encoded_bytes()).is_some())
+  {
+    return None;
+  }
+
+  let (target_str, base_str) = (target_rest.to_str()?, base_rest.to_str()?);
+  if let Some(outcome) = relative_windows_native_fast(target_str, base_str) {
+    return Some(outcome);
+  }
+
+  // Dirty or mixed-separator paths retain the established normalized-string
+  // fallback. Its temporary allocations stay off the canonical Rolldown path.
+  let target_fwd = normalize_backslash_cow(target_str);
+  let base_fwd = normalize_backslash_cow(base_str);
+  let relative = relative_str(&target_fwd, &base_fwd);
+  if !windows_standalone_relative_is_representable(&relative) {
+    return None;
+  }
+  Some(match relative {
+    Cow::Borrowed(relative) => {
+      let target_without_trailing = target_str.trim_end_matches(['/', '\\']);
+      debug_assert!(relative.len() <= target_without_trailing.len());
+      let original_relative =
+        &target_without_trailing[target_without_trailing.len() - relative.len()..];
+      if memchr(b'/', original_relative.as_bytes()).is_none() {
+        RelativeOutcome::BorrowedNative(Path::new(original_relative))
+      } else {
+        RelativeOutcome::Slash(relative.to_owned())
+      }
+    }
+    Cow::Owned(relative) => RelativeOutcome::Slash(relative),
+  })
+}
+
+#[cfg(target_family = "windows")]
+fn try_relative_windows_root_lexically(target: &Path, base: &Path) -> Option<PathBuf> {
+  if !matches!(target.components().next(), Some(Component::RootDir))
+    || !matches!(base.components().next(), Some(Component::RootDir))
+  {
+    return None;
+  }
+
+  let target = normalize_for_resolution(target).into_owned();
+  let base = normalize_for_resolution(base).into_owned();
+  Some(relative_from_resolved(base, target).into_path_buf())
+}
+
+fn relative_without_cwd<'a>(
+  target_path: &'a Path,
+  base_path: &Path,
+) -> Option<RelativeOutcome<'a>> {
+  // Fast path: absolute inputs do not need cwd state. Unix can scan the UTF-8
+  // spelling directly. Windows first compares borrowed prefix components, then
+  // scans canonical native separators without allocating normalized copies.
+  #[cfg(target_family = "windows")]
+  if target_path.is_absolute()
+    && base_path.is_absolute()
+    && let Some(outcome) = try_relative_windows_absolute(target_path, base_path)
+  {
+    return Some(outcome);
+  }
+
+  #[cfg(not(target_family = "windows"))]
+  if target_path.is_absolute()
+    && base_path.is_absolute()
+    && let (Some(target_str), Some(base_str)) = (target_path.to_str(), base_path.to_str())
+  {
+    return Some(match relative_str(target_str, base_str) {
+      Cow::Borrowed(relative) => RelativeOutcome::BorrowedNative(Path::new(relative)),
+      Cow::Owned(relative) => RelativeOutcome::Slash(relative),
+    });
+  }
+
+  #[cfg(target_family = "windows")]
+  if let Some(relative) = try_relative_windows_root_lexically(target_path, base_path) {
+    return Some(RelativeOutcome::Native(relative));
+  }
+
+  #[cfg(target_family = "windows")]
+  if let Some(relative) = try_relative_drive_lexically(target_path, base_path) {
+    return Some(RelativeOutcome::Native(relative));
+  }
+
+  // Plain relative paths with the same number of unresolved leading parents
+  // resolve from the same cwd ancestor. Their relative path is therefore
+  // independent of the cwd itself.
+  if !target_path.has_root()
+    && !base_path.has_root()
+    && let Some(relative) = try_relative_lexically(target_path, base_path)
+  {
+    return Some(RelativeOutcome::Native(relative));
+  }
+
+  None
+}
+
+fn relative_from_resolved<'a>(base: PathBuf, target: PathBuf) -> RelativeOutcome<'a> {
+  #[cfg(target_family = "windows")]
+  if windows_paths_have_different_prefixes(&base, &target) {
+    return RelativeOutcome::Native(target);
+  }
+
+  if base == target {
+    return RelativeOutcome::Native(PathBuf::new());
+  }
+
+  let filter_fn = |component: &Component| {
+    matches!(component, Component::Normal(_) | Component::Prefix(_) | Component::RootDir)
+  };
+  let base_components = base.components().filter(filter_fn);
+  let target_components = target.components().filter(filter_fn);
+  let common_len = base_components
+    .clone()
+    .zip(target_components.clone())
+    .take_while(|(from, to)| {
+      #[cfg(target_family = "windows")]
+      {
+        windows_components_eq_ignore_ascii_case(from, to)
+      }
+      #[cfg(not(target_family = "windows"))]
+      {
+        from == to
+      }
+    })
+    .count();
+  let up_len = base_components.count().saturating_sub(common_len);
+  #[cfg(target_family = "windows")]
+  {
+    let target_suffix = target_components.clone().skip(common_len);
+    if target_suffix
+      .clone()
+      .any(|component| windows_relative_component_has_literal_slash(&component))
+      || (up_len == 0
+        && target_suffix.clone().next().is_some_and(|component| {
+          !windows_standalone_relative_bytes_are_representable(
+            component.as_os_str().as_encoded_bytes(),
+          )
+        }))
+    {
+      return RelativeOutcome::Native(target);
+    }
+
+    let suffix_count = target_suffix.clone().count();
+    let component_count = up_len + suffix_count;
+    let capacity = up_len * 2
+      + target_suffix.clone().map(|component| component.as_os_str().len()).sum::<usize>()
+      + component_count.saturating_sub(1);
+    let mut relative = OsString::with_capacity(capacity);
+    for _ in 0..up_len {
+      push_windows_relative_component(&mut relative, OsStr::new(".."));
+    }
+    for component in target_suffix {
+      push_windows_relative_component(&mut relative, component.as_os_str());
+    }
+    RelativeOutcome::Native(PathBuf::from(relative))
+  }
+  #[cfg(not(target_family = "windows"))]
+  let relative =
+    (0..up_len).map(|_| Component::ParentDir).chain(target_components.skip(common_len)).collect();
+  #[cfg(not(target_family = "windows"))]
+  RelativeOutcome::Native(relative)
+}
+
+fn try_relative_outcome<'a>(
+  target_path: &'a Path,
+  base_path: &Path,
+) -> io::Result<RelativeOutcome<'a>> {
+  if let Some(outcome) = relative_without_cwd(target_path, base_path) {
+    return Ok(outcome);
+  }
+
+  // Slow path: avoid current_dir() for already-absolute paths.
+  let base = if base_path.is_absolute() {
+    normalize_for_resolution(base_path).into_owned()
+  } else {
+    base_path.try_absolutize()?.into_owned()
+  };
+  let target = if target_path.is_absolute() {
+    normalize_for_resolution(target_path).into_owned()
+  } else {
+    target_path.try_absolutize()?.into_owned()
+  };
+
+  Ok(relative_from_resolved(base, target))
+}
+
+fn relative_outcome_with<'a, P>(
+  target_path: &'a Path,
+  base_path: &Path,
+  cwd: P,
+) -> RelativeOutcome<'a>
+where
+  P: AsRef<Path> + Into<PathBuf>,
+{
+  if let Some(outcome) = relative_without_cwd(target_path, base_path) {
+    return outcome;
+  }
+
+  assert!(cwd.as_ref().is_absolute(), "explicit current directory must be absolute");
+
+  let base = if base_path.is_absolute() {
+    normalize_for_resolution(base_path).into_owned()
+  } else {
+    base_path.absolutize_with(cwd.as_ref()).into_owned()
+  };
+  let target = if target_path.is_absolute() {
+    normalize_for_resolution(target_path).into_owned()
+  } else {
+    target_path.absolutize_with(cwd).into_owned()
+  };
+
+  if !base.is_absolute() || !target.is_absolute() {
+    return RelativeOutcome::Native(normalize_for_resolution(&target).into_owned());
+  }
+
+  relative_from_resolved(base, target)
+}
+
+impl SugarPath for Path {
+  fn normalize(&self) -> Cow<'_, Path> {
+    normalize_path(self, TrailingSeparator::Preserve)
+  }
+
+  fn absolutize(&self) -> Cow<'_, Path> {
+    self.try_absolutize().expect("failed to resolve path against the current directory")
+  }
+
+  fn try_absolutize(&self) -> io::Result<Cow<'_, Path>> {
+    if self.is_absolute() {
+      return Ok(normalize_for_resolution(self));
+    }
+
+    #[cfg(target_family = "windows")]
+    if let Some((drive, _)) = classify_drive_relative(self) {
+      let absolute = std::path::absolute(self)?;
+      return Ok(Cow::Owned(normalize_owned_for_resolution(preserve_windows_drive_spelling(
+        absolute, drive,
+      ))));
+    }
+
+    let cwd = try_get_current_dir()?;
+    Ok(self.absolutize_with(cwd))
+  }
+
+  fn absolutize_with(&self, cwd: impl AsRef<Path> + Into<PathBuf>) -> Cow<'_, Path> {
+    if self.is_absolute() {
+      return normalize_for_resolution(self);
+    }
+
+    assert!(cwd.as_ref().is_absolute(), "explicit current directory must be absolute");
+
+    #[cfg(target_family = "windows")]
+    if let Some((drive, _)) = classify_drive_relative(self) {
+      return absolutize_drive_relative_with(self, cwd, drive);
+    }
+
+    let mut resolved: PathBuf = cwd.into();
+    resolved.push(self);
+    Cow::Owned(normalize_owned_for_resolution(resolved))
+  }
+
+  fn relative(&self, base: impl AsRef<Path>) -> Cow<'_, Path> {
+    self.try_relative(base).expect("failed to resolve relative paths against the current directory")
+  }
+
+  fn try_relative(&self, base: impl AsRef<Path>) -> io::Result<Cow<'_, Path>> {
+    try_relative_outcome(self, base.as_ref()).map(RelativeOutcome::into_cow_path)
+  }
+
+  fn relative_with(
+    &self,
+    base: impl AsRef<Path>,
+    cwd: impl AsRef<Path> + Into<PathBuf>,
+  ) -> Cow<'_, Path> {
+    relative_outcome_with(self, base.as_ref(), cwd).into_cow_path()
+  }
+
+  fn to_slash(&self) -> Cow<'_, str> {
+    self.try_to_slash().expect("path is not valid Unicode")
+  }
+
+  fn try_to_slash(&self) -> Option<Cow<'_, str>> {
     if std::path::MAIN_SEPARATOR == '/' {
       self.to_str().map(Cow::Borrowed)
     } else {
@@ -153,7 +944,7 @@ impl SugarPath for Path {
     }
   }
 
-  fn to_slash_lossy<'a>(&'a self) -> Cow<'a, str> {
+  fn to_slash_lossy(&self) -> Cow<'_, str> {
     if std::path::MAIN_SEPARATOR == '/' {
       self.to_string_lossy()
     } else {
@@ -179,7 +970,7 @@ impl SugarPath for Path {
 /// paths, allowing `normalize()` to return `Cow::Borrowed` with zero allocation.
 #[inline]
 #[cfg(not(target_family = "windows"))]
-fn needs_normalization(path: &Path) -> bool {
+fn needs_normalization(path: &Path, trailing: TrailingSeparator) -> bool {
   let Some(s) = path.to_str() else {
     return true;
   };
@@ -187,17 +978,25 @@ fn needs_normalization(path: &Path) -> bool {
   if bytes.is_empty() {
     return true;
   }
-  // Leading `.` or `..` component (but not `...` or `.foo` which are normal filenames)
+  if bytes == b"." || (trailing == TrailingSeparator::Preserve && bytes == b"./") {
+    return false;
+  }
+  // A leading `.` needs normalization. A leading run of `..` can be clean when
+  // every remaining component is normal (`...` and `.foo` are normal names).
   if bytes[0] == b'.' {
     if bytes.len() == 1 || bytes[1] == b'/' {
       return true;
     }
     if bytes[1] == b'.' && (bytes.len() == 2 || bytes[2] == b'/') {
-      return true;
+      return !leading_parent_path_is_normalized(
+        bytes,
+        b'/',
+        trailing == TrailingSeparator::Preserve,
+      );
     }
   }
   // Trailing `/` (unless path is exactly `/`)
-  if bytes.len() > 1 && bytes[bytes.len() - 1] == b'/' {
+  if trailing == TrailingSeparator::Strip && bytes.len() > 1 && bytes[bytes.len() - 1] == b'/' {
     return true;
   }
   // memchr scan for `//`, `/.`, `/..`
@@ -234,13 +1033,16 @@ fn needs_normalization(path: &Path) -> bool {
 /// Check whether a path needs normalization (Windows variant).
 #[inline]
 #[cfg(target_family = "windows")]
-fn needs_normalization(path: &Path) -> bool {
+fn needs_normalization(path: &Path, trailing: TrailingSeparator) -> bool {
   let Some(s) = path.to_str() else {
     return true;
   };
   let bytes = s.as_bytes();
   if bytes.is_empty() {
     return true;
+  }
+  if bytes == b"." || (trailing == TrailingSeparator::Preserve && bytes == b".\\") {
+    return false;
   }
   // Any forward slash means normalization is needed (gets converted to `\`)
   if memchr(b'/', bytes).is_some() {
@@ -250,27 +1052,37 @@ fn needs_normalization(path: &Path) -> bool {
   if bytes.len() >= 2 && bytes[0] == b'\\' && bytes[1] == b'\\' {
     return true;
   }
-  // Bare drive `X:` without trailing `\` normalizes to `X:.`
-  // Also `X:foo` (drive-relative) needs normalization
-  if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
-    if bytes.len() == 2 {
-      return true; // bare `C:`
-    }
-    if bytes[2] != b'\\' {
-      return true; // `C:foo` (drive-relative, no root)
-    }
+  // A bare drive `X:` normalizes to `X:.`. Other drive-relative paths keep
+  // their drive spelling and lexical form.
+  if bytes.len() == 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+    return true; // bare `C:`
   }
-  // Leading `.` or `..` component (but not `...` or `.foo` which are normal filenames)
+  // `C:.` and `C:.\` are canonical drive-relative current-directory
+  // spellings, but the same component before another segment is redundant.
+  if bytes.len() > 4
+    && bytes[1] == b':'
+    && bytes[0].is_ascii_alphabetic()
+    && bytes[2] == b'.'
+    && bytes[3] == b'\\'
+  {
+    return true;
+  }
+  // A leading `.` needs normalization. A leading run of `..` can be clean when
+  // every remaining component is normal (`...` and `.foo` are normal names).
   if bytes[0] == b'.' {
     if bytes.len() == 1 || bytes[1] == b'\\' {
       return true;
     }
     if bytes[1] == b'.' && (bytes.len() == 2 || bytes[2] == b'\\') {
-      return true;
+      return !leading_parent_path_is_normalized(
+        bytes,
+        b'\\',
+        trailing == TrailingSeparator::Preserve,
+      );
     }
   }
   // Trailing `\` (unless path is `\` alone or `X:\`)
-  if bytes[bytes.len() - 1] == b'\\' {
+  if trailing == TrailingSeparator::Strip && bytes[bytes.len() - 1] == b'\\' {
     // `\` alone is clean
     if bytes.len() == 1 {
       return false;
@@ -312,10 +1124,49 @@ fn needs_normalization(path: &Path) -> bool {
   false
 }
 
+/// Return whether an unprefixed path starting with a `..` component is already
+/// in the exact spelling produced by `normalize_inner`.
+///
+/// A canonical path may contain one or more leading `..` components followed
+/// only by normal components. Empty components, `.`, a `..` after any normal
+/// component, and a trailing separator all require normalization.
+#[inline]
+fn leading_parent_path_is_normalized(bytes: &[u8], separator: u8, preserve_trailing: bool) -> bool {
+  debug_assert!(bytes == b".." || bytes.starts_with(&[b'.', b'.', separator]));
+
+  let mut offset = 0;
+  let mut saw_normal = false;
+  loop {
+    let end =
+      memchr(separator, &bytes[offset..]).map(|position| offset + position).unwrap_or(bytes.len());
+    let component = &bytes[offset..end];
+
+    if component == b".." {
+      if saw_normal {
+        return false;
+      }
+    } else if component.is_empty() || component == b"." {
+      return false;
+    } else {
+      saw_normal = true;
+    }
+
+    if end == bytes.len() {
+      return true;
+    }
+    offset = end + 1;
+    if offset == bytes.len() {
+      return preserve_trailing;
+    }
+  }
+}
+
 #[inline]
 fn normalize_inner<'a>(
   mut components: Peekable<impl Iterator<Item = Component<'a>>>,
   hint_cap: usize,
+  preserve_trailing: bool,
+  _drive_spelling: Option<u8>,
 ) -> Cow<'a, Path> {
   let sep_byte = std::path::MAIN_SEPARATOR as u8;
   let mut buf: Vec<u8> = Vec::with_capacity(hint_cap);
@@ -327,24 +1178,62 @@ fn normalize_inner<'a>(
   #[cfg(target_family = "windows")]
   let prefix_len: usize;
   #[cfg(target_family = "windows")]
+  let prefix_only_suffix: Option<u8>;
+  #[cfg(target_family = "windows")]
+  let prefix_root_is_optional: bool;
+  #[cfg(target_family = "windows")]
   {
     if let Some(Component::Prefix(p)) = components.peek() {
-      if let std::path::Prefix::UNC(server, share) = p.kind() {
-        buf.extend_from_slice(b"\\\\");
-        buf.extend_from_slice(server.as_encoded_bytes());
-        buf.push(b'\\');
-        buf.extend_from_slice(share.as_encoded_bytes());
-      } else {
-        buf.extend_from_slice(p.as_os_str().as_encoded_bytes());
-      }
+      let (suffix, optional_root) = match p.kind() {
+        std::path::Prefix::VerbatimDisk(drive) => {
+          buf.extend_from_slice(b"\\\\?\\");
+          buf.push(_drive_spelling.unwrap_or(drive));
+          buf.push(b':');
+          // `\\?\C:` has no RootDir component. A slash would add one, while
+          // a dot would make Rust parse the whole prefix as generic Verbatim.
+          (None, false)
+        }
+        std::path::Prefix::DeviceNS(device) => {
+          buf.extend_from_slice(b"\\\\.\\");
+          buf.extend_from_slice(device.as_encoded_bytes());
+          (None, true)
+        }
+        std::path::Prefix::UNC(server, share) => {
+          buf.extend_from_slice(b"\\\\");
+          buf.extend_from_slice(server.as_encoded_bytes());
+          buf.push(b'\\');
+          buf.extend_from_slice(share.as_encoded_bytes());
+          (Some(b'\\'), false)
+        }
+        std::path::Prefix::Disk(drive) => {
+          buf.push(_drive_spelling.unwrap_or(drive));
+          buf.push(b':');
+          (Some(b'.'), false)
+        }
+        std::path::Prefix::Verbatim(_) | std::path::Prefix::VerbatimUNC(_, _) => {
+          buf.extend_from_slice(p.as_os_str().as_encoded_bytes());
+          (None, true)
+        }
+      };
+      prefix_only_suffix = suffix;
+      prefix_root_is_optional = optional_root;
       components.next();
+    } else {
+      prefix_only_suffix = None;
+      prefix_root_is_optional = false;
     }
     prefix_len = buf.len();
   }
 
   // --- RootDir ---
   if matches!(components.peek(), Some(Component::RootDir)) {
-    buf.push(sep_byte);
+    #[cfg(target_family = "windows")]
+    let prefix_has_synthetic_root = buf.len() == hint_cap && prefix_root_is_optional;
+    #[cfg(not(target_family = "windows"))]
+    let prefix_has_synthetic_root = false;
+    if !prefix_has_synthetic_root {
+      buf.push(sep_byte);
+    }
     has_root = true;
     components.next();
   }
@@ -389,20 +1278,45 @@ fn normalize_inner<'a>(
     }
   }
 
+  #[cfg(target_family = "windows")]
+  if prefix_root_is_optional && depth == 0 && !preserve_trailing {
+    buf.truncate(prefix_len);
+  }
+
+  // A normal component such as `C:foo` is only a drive prefix at the start of
+  // a standalone Windows path. Keep the minimal `.\` spelling when removing
+  // earlier lexical components would otherwise change that component's type.
+  #[cfg(target_family = "windows")]
+  if prefix_len == 0 && !has_root && !windows_standalone_relative_bytes_are_representable(&buf) {
+    let len = buf.len();
+    buf.reserve(2);
+    buf.resize(len + 2, 0);
+    buf.copy_within(0..len, 2);
+    buf[0] = b'.';
+    buf[1] = sep_byte;
+  }
+
   // --- Empty result → "." ---
   if buf.is_empty() {
+    if preserve_trailing {
+      let mut current_directory = PathBuf::from(".");
+      current_directory.push("");
+      return Cow::Owned(current_directory);
+    }
     return Cow::Borrowed(Path::new("."));
   }
 
-  // --- Prefix-only: append trailing separator or CurDir ---
+  // --- Prefix-only: preserve its component semantics or use its canonical suffix ---
   #[cfg(target_family = "windows")]
-  if buf.len() == prefix_len && prefix_len > 0 {
-    // Determine if the prefix is UNC by checking for leading "\\"
-    if buf.len() >= 2 && buf[0] == b'\\' && buf[1] == b'\\' {
-      buf.push(b'\\');
-    } else {
-      buf.push(b'.');
-    }
+  if buf.len() == prefix_len
+    && prefix_len > 0
+    && let Some(suffix) = prefix_only_suffix
+  {
+    buf.push(suffix);
+  }
+
+  if preserve_trailing && buf.last() != Some(&sep_byte) {
+    buf.push(sep_byte);
   }
 
   // SAFETY: `buf` was built entirely from:
@@ -412,55 +1326,204 @@ fn normalize_inner<'a>(
   Cow::Owned(PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) }))
 }
 
-impl<T: Deref<Target = str>> SugarPath for T {
+impl SugarPath for str {
   fn normalize(&self) -> Cow<'_, Path> {
-    self.as_path().normalize()
+    Path::new(self).normalize()
   }
 
   fn absolutize(&self) -> Cow<'_, Path> {
-    self.as_path().absolutize()
+    Path::new(self).absolutize()
   }
 
-  fn absolutize_with<'a>(&self, base: Cow<'a, Path>) -> Cow<'_, Path> {
-    self.as_path().absolutize_with(base)
+  fn try_absolutize(&self) -> io::Result<Cow<'_, Path>> {
+    Path::new(self).try_absolutize()
   }
 
-  fn relative(&self, to: impl AsRef<Path>) -> PathBuf {
-    self.as_path().relative(to)
+  fn absolutize_with(&self, cwd: impl AsRef<Path> + Into<PathBuf>) -> Cow<'_, Path> {
+    Path::new(self).absolutize_with(cwd)
   }
 
-  fn to_slash<'a>(&'a self) -> Option<Cow<'a, str>> {
-    self.as_path().to_slash()
+  fn relative(&self, base: impl AsRef<Path>) -> Cow<'_, Path> {
+    Path::new(self).relative(base)
   }
 
-  fn to_slash_lossy<'a>(&'a self) -> Cow<'a, str> {
-    self.as_path().to_slash_lossy()
+  fn try_relative(&self, base: impl AsRef<Path>) -> io::Result<Cow<'_, Path>> {
+    Path::new(self).try_relative(base)
+  }
+
+  fn relative_with(
+    &self,
+    base: impl AsRef<Path>,
+    cwd: impl AsRef<Path> + Into<PathBuf>,
+  ) -> Cow<'_, Path> {
+    Path::new(self).relative_with(base, cwd)
+  }
+
+  fn to_slash(&self) -> Cow<'_, str> {
+    if std::path::MAIN_SEPARATOR == '/' {
+      Cow::Borrowed(self)
+    } else {
+      match replace_main_separator(self) {
+        Some(replaced) => Cow::Owned(replaced),
+        None => Cow::Borrowed(self),
+      }
+    }
+  }
+
+  fn try_to_slash(&self) -> Option<Cow<'_, str>> {
+    Some(self.to_slash())
+  }
+
+  fn to_slash_lossy(&self) -> Cow<'_, str> {
+    self.to_slash()
   }
 
   fn as_path(&self) -> &Path {
-    Path::new(self.deref())
+    Path::new(self)
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn windows_paths_have_different_prefixes(base: &Path, target: &Path) -> bool {
+  match (base.components().next(), target.components().next()) {
+    (Some(Component::Prefix(base)), Some(Component::Prefix(target))) => {
+      !windows_prefixes_eq_ignore_ascii_case(base.kind(), target.kind())
+    }
+    (Some(Component::Prefix(_)), _) | (_, Some(Component::Prefix(_))) => true,
+    _ => false,
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn windows_components_eq_ignore_ascii_case(from: &Component<'_>, to: &Component<'_>) -> bool {
+  match (from, to) {
+    (Component::Normal(from), Component::Normal(to)) => {
+      from.as_encoded_bytes().eq_ignore_ascii_case(to.as_encoded_bytes())
+    }
+    (Component::Prefix(from), Component::Prefix(to)) => {
+      windows_prefixes_eq_ignore_ascii_case(from.kind(), to.kind())
+    }
+    _ => from == to,
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn windows_prefixes_eq_ignore_ascii_case(
+  from: std::path::Prefix<'_>,
+  to: std::path::Prefix<'_>,
+) -> bool {
+  use std::path::Prefix;
+
+  let os_eq_ignore_ascii_case = |from: &std::ffi::OsStr, to: &std::ffi::OsStr| {
+    from.as_encoded_bytes().eq_ignore_ascii_case(to.as_encoded_bytes())
+  };
+
+  match (from, to) {
+    (Prefix::Disk(from), Prefix::Disk(to))
+    | (Prefix::VerbatimDisk(from), Prefix::VerbatimDisk(to)) => from.eq_ignore_ascii_case(&to),
+    (Prefix::UNC(from_server, from_share), Prefix::UNC(to_server, to_share))
+    | (Prefix::VerbatimUNC(from_server, from_share), Prefix::VerbatimUNC(to_server, to_share)) => {
+      os_eq_ignore_ascii_case(from_server, to_server)
+        && os_eq_ignore_ascii_case(from_share, to_share)
+    }
+    (Prefix::DeviceNS(from), Prefix::DeviceNS(to))
+    | (Prefix::Verbatim(from), Prefix::Verbatim(to)) => os_eq_ignore_ascii_case(from, to),
+    _ => false,
   }
 }
 
 /// String-based relative path computation. Dispatches to the fast path when
-/// no `.`/`..` normalization is needed, otherwise normalizes first.
-fn relative_str(target: &str, base: &str) -> String {
-  if needs_dot_normalization(target) || needs_dot_normalization(base) {
-    relative_str_slow(target, base)
+/// the component spelling is already canonical, otherwise normalizes first.
+fn relative_str<'a>(target: &'a str, base: &str) -> Cow<'a, str> {
+  let target = target.trim_end_matches('/');
+  let base = base.trim_end_matches('/');
+  if needs_relative_normalization(target) || needs_relative_normalization(base) {
+    Cow::Owned(relative_str_slow(target, base))
   } else {
     relative_str_fast(target, base)
   }
 }
 
-/// Check if a path contains `.` or `..` components that need normalization.
+#[cfg(not(target_family = "windows"))]
+#[inline]
+fn common_prefix_len_case_sensitive(left: &[u8], right: &[u8]) -> usize {
+  #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+  {
+    common_prefix_len_neon(left, right)
+  }
+  #[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
+  {
+    common_prefix_len_scalar(left, right)
+  }
+}
+
+#[cfg(not(target_family = "windows"))]
+#[inline]
+fn common_prefix_len_scalar(left: &[u8], right: &[u8]) -> usize {
+  left
+    .iter()
+    .zip(right)
+    .position(|(left, right)| left != right)
+    .unwrap_or(left.len().min(right.len()))
+}
+
+#[cfg(all(not(target_family = "windows"), target_arch = "aarch64", target_feature = "neon"))]
+#[inline]
+fn common_prefix_len_neon(left: &[u8], right: &[u8]) -> usize {
+  use std::arch::aarch64::{vceqq_u8, vld1q_u8, vminvq_u8, vst1q_u8};
+
+  let len = left.len().min(right.len());
+  let vector_end = len & !15;
+  let mut offset = 0;
+
+  while offset < vector_end {
+    // SAFETY: `vector_end` is `len` rounded down to a multiple of 16, and
+    // `offset` advances by exactly 16. Both loads therefore stay within the
+    // shorter input, including when either slice starts at an unaligned address.
+    let equal = unsafe {
+      let left_chunk = vld1q_u8(left.as_ptr().add(offset));
+      let right_chunk = vld1q_u8(right.as_ptr().add(offset));
+      vceqq_u8(left_chunk, right_chunk)
+    };
+    // Equality lanes are all ones for a match and all zeroes for a mismatch.
+    if unsafe { vminvq_u8(equal) } != u8::MAX {
+      let mut equal_bytes = [0; 16];
+      // SAFETY: `equal_bytes` has exactly enough initialized space for one
+      // 16-byte vector store.
+      unsafe { vst1q_u8(equal_bytes.as_mut_ptr(), equal) };
+      let mismatch_bits = !u128::from_le_bytes(equal_bytes);
+      debug_assert_ne!(mismatch_bits, 0);
+      return offset + mismatch_bits.trailing_zeros() as usize / 8;
+    }
+    offset += 16;
+  }
+
+  offset + common_prefix_len_scalar(&left[offset..len], &right[offset..len])
+}
+
+/// Check if a path contains components or separators that need normalization.
 /// Uses `memchr` to jump between `/` positions — most bytes in a path aren't `/`,
 /// so this skips the vast majority of the input.
 #[inline]
-fn needs_dot_normalization(path: &str) -> bool {
+fn needs_relative_normalization(path: &str) -> bool {
   let bytes = path.as_bytes();
+  if bytes.len() > 1 && bytes.last() == Some(&b'/') {
+    return true;
+  }
+  if bytes.first() == Some(&b'.') {
+    if bytes.len() == 1 || bytes.get(1) == Some(&b'/') {
+      return true;
+    }
+    if bytes.get(1) == Some(&b'.') && (bytes.len() == 2 || bytes.get(2) == Some(&b'/')) {
+      return true;
+    }
+  }
   let mut offset = 0;
   while let Some(pos) = memchr(b'/', &bytes[offset..]) {
     let slash = offset + pos;
+    if slash + 1 < bytes.len() && bytes[slash + 1] == b'/' {
+      return true;
+    }
     if slash + 1 < bytes.len() && bytes[slash + 1] == b'.' {
       let after_dot = slash + 2;
       // "/." at end or "/./"
@@ -480,7 +1543,7 @@ fn needs_dot_normalization(path: &str) -> bool {
 
 /// Fast path: no normalization needed. Operates directly on `&str` slices
 /// with zero intermediate allocation.
-fn relative_str_fast(target: &str, base: &str) -> String {
+fn relative_str_fast<'a>(target: &'a str, base: &str) -> Cow<'a, str> {
   let common_byte_len = {
     #[cfg(target_family = "windows")]
     {
@@ -493,7 +1556,7 @@ fn relative_str_fast(target: &str, base: &str) -> String {
     }
     #[cfg(not(target_family = "windows"))]
     {
-      target.bytes().zip(base.bytes()).take_while(|(a, b)| a == b).count()
+      common_prefix_len_case_sensitive(target.as_bytes(), base.as_bytes())
     }
   };
 
@@ -530,6 +1593,9 @@ fn relative_str_fast(target: &str, base: &str) -> String {
 
   let target_suffix = target[common_prefix..].trim_start_matches('/');
   let ups = ups as usize;
+  if ups == 0 {
+    return Cow::Borrowed(target_suffix);
+  }
   let suffix_iter = if target_suffix.is_empty() { None } else { Some(target_suffix) };
   let mut result = String::with_capacity(ups * 3 + target_suffix.len());
   std::iter::repeat_n("..", ups).chain(suffix_iter).for_each(|s| {
@@ -538,7 +1604,7 @@ fn relative_str_fast(target: &str, base: &str) -> String {
     }
     result.push_str(s);
   });
-  result
+  Cow::Owned(result)
 }
 
 /// Slow path: normalize `.` and `..` components first, then compute relative path.
@@ -613,28 +1679,68 @@ fn normalize_backslash_cow(s: &str) -> Cow<'_, str> {
   Cow::Owned(unsafe { String::from_utf8_unchecked(out) })
 }
 
-/// Extract the Windows root prefix and remaining path from a forward-slash-normalized path.
-/// Returns `(root, rest)` where root excludes the trailing separator.
-///
-/// - Drive: `"c:/foo/bar"` → `("c:", "foo/bar")`
-/// - UNC:   `"//server/share/foo"` → `("//server/share", "foo")`
-#[cfg(target_family = "windows")]
-fn split_windows_root(path: &str) -> Option<(&str, &str)> {
-  let bytes = path.as_bytes();
-  if bytes.len() >= 2 && bytes[1] == b':' {
-    // Drive letter: c:/...
-    let rest_start = if bytes.get(2) == Some(&b'/') { 3 } else { 2 };
-    Some((&path[..2], &path[rest_start..]))
-  } else if bytes.len() >= 2 && bytes[0] == b'/' && bytes[1] == b'/' {
-    // UNC: //server/share/...
-    let server_end = memchr(b'/', &bytes[2..]).map(|p| 2 + p)?;
-    let share_start = server_end + 1;
-    let share_end =
-      memchr(b'/', &bytes[share_start..]).map(|p| share_start + p).unwrap_or(bytes.len());
-    let rest_start = if share_end < bytes.len() { share_end + 1 } else { share_end };
-    Some((&path[..share_end], &path[rest_start..]))
-  } else {
-    None
+#[cfg(all(test, not(target_family = "windows"), target_arch = "aarch64", target_feature = "neon"))]
+mod common_prefix_tests {
+  use super::{common_prefix_len_neon, common_prefix_len_scalar};
+
+  fn bytes(len: usize) -> Vec<u8> {
+    (0..len).map(|index| ((index * 37 + 11) % 251) as u8).collect()
+  }
+
+  #[test]
+  fn neon_matches_scalar_for_lengths_and_every_mismatch() {
+    for len in 0..=256 {
+      let left = bytes(len);
+      assert_eq!(common_prefix_len_neon(&left, &left), len, "equal input length {len}");
+
+      for mismatch in 0..len {
+        let mut right = left.clone();
+        right[mismatch] ^= u8::MAX;
+        assert_eq!(
+          common_prefix_len_neon(&left, &right),
+          common_prefix_len_scalar(&left, &right),
+          "input length {len}, mismatch {mismatch}",
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn neon_matches_scalar_for_every_length_pair() {
+    let input = bytes(256);
+    for left_len in 0..=256 {
+      for right_len in 0..=256 {
+        assert_eq!(
+          common_prefix_len_neon(&input[..left_len], &input[..right_len]),
+          common_prefix_len_scalar(&input[..left_len], &input[..right_len]),
+          "left length {left_len}, right length {right_len}",
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn neon_handles_all_sixteen_byte_alignment_pairs() {
+    for left_offset in 0..16 {
+      for right_offset in 0..16 {
+        for len in 0..=256 {
+          let mut left = [0xa5; 288];
+          let mut right = [0x5a; 288];
+          for index in 0..len {
+            let value = ((index * 37 + 11) % 251) as u8;
+            left[left_offset + index] = value;
+            right[right_offset + index] = value;
+          }
+          let left = &left[left_offset..left_offset + len];
+          let right = &right[right_offset..right_offset + len];
+          assert_eq!(
+            common_prefix_len_neon(left, right),
+            len,
+            "left offset {left_offset}, right offset {right_offset}, length {len}",
+          );
+        }
+      }
+    }
   }
 }
 
@@ -657,76 +1763,5 @@ fn replace_main_separator(input: &str) -> Option<String> {
     Some(buf)
   } else {
     None
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use std::{borrow::Cow, path::PathBuf};
-
-  use super::SugarPath;
-
-  #[allow(unused_macros)]
-  macro_rules! assert_eq_str {
-    ($left:expr, $right:expr) => {
-      assert_eq!($left.to_str().unwrap(), $right);
-    };
-    ($left:expr, $right:expr, $($arg:tt)*) => {
-      assert_eq!($left.to_str().unwrap(), $right, $($arg)*);
-    };
-  }
-
-  #[test]
-  fn _test_as_path() {
-    let str = "";
-    str.as_path();
-
-    let string = String::new();
-    string.as_path();
-
-    let ref_string = &string;
-    ref_string.as_path();
-  }
-
-  #[test]
-  fn _test_absolutize_with() {
-    let tmp = "";
-    tmp.absolutize_with(Cow::Borrowed("".as_path()));
-    tmp.absolutize_with(Cow::Owned(PathBuf::new()));
-  }
-
-  #[cfg(target_family = "unix")]
-  #[test]
-  fn normalize() {
-    use std::path::Path;
-    assert_eq_str!(Path::new("/foo/../../../bar").normalize(), "/bar");
-    assert_eq_str!(Path::new("a//b//../b").normalize(), "a/b");
-    assert_eq_str!(Path::new("/foo/../../../bar").normalize(), "/bar");
-    assert_eq_str!(Path::new("a//b//./c").normalize(), "a/b/c");
-    assert_eq_str!(Path::new("a//b//.").normalize(), "a/b");
-    assert_eq_str!(Path::new("/a/b/c/../../../x/y/z").normalize(), "/x/y/z");
-    assert_eq_str!(Path::new("///..//./foo/.//bar").normalize(), "/foo/bar");
-    assert_eq_str!(Path::new("bar/foo../../").normalize(), "bar");
-    assert_eq_str!(Path::new("bar/foo../..").normalize(), "bar");
-    assert_eq_str!(Path::new("bar/foo../../baz").normalize(), "bar/baz");
-    assert_eq_str!(Path::new("bar/foo../").normalize(), "bar/foo..");
-    assert_eq_str!(Path::new("bar/foo..").normalize(), "bar/foo..");
-    assert_eq_str!(Path::new("../foo../../../bar").normalize(), "../../bar");
-    assert_eq_str!(Path::new("../foo../../../bar").normalize(), "../../bar");
-    assert_eq_str!(Path::new("../.../.././.../../../bar").normalize(), "../../bar");
-    assert_eq_str!(Path::new("../.../.././.../../../bar").normalize(), "../../bar");
-    assert_eq_str!(Path::new("../../../foo/../../../bar").normalize(), "../../../../../bar");
-    assert_eq_str!(Path::new("../../../foo/../../../bar/../../").normalize(), "../../../../../..");
-    assert_eq_str!(Path::new("../foobar/barfoo/foo/../../../bar/../../").normalize(), "../..");
-    assert_eq_str!(
-      Path::new("../.../../foobar/../../../bar/../../baz").normalize(),
-      "../../../../baz"
-    );
-    assert_eq_str!(Path::new("foo/bar\\baz").normalize(), "foo/bar\\baz");
-    assert_eq_str!(Path::new("/a/b/c/../../../").normalize(), "/");
-    assert_eq_str!(Path::new("a/b/c/../../../").normalize(), ".");
-    assert_eq_str!(Path::new("a/b/c/../../..").normalize(), ".");
-
-    assert_eq_str!(Path::new("").normalize(), ".");
   }
 }

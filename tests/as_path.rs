@@ -18,6 +18,29 @@ fn test_as_path_on_string() {
 }
 
 #[test]
+fn string_like_values_use_the_str_implementation_through_deref() {
+  use std::ops::Deref;
+
+  struct StringWrapper(String);
+
+  impl Deref for StringWrapper {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+      &self.0
+    }
+  }
+
+  let owned = String::from("hello/world");
+  let borrowed = &owned;
+  let wrapped = StringWrapper(owned.clone());
+
+  assert_eq!(owned.as_path(), Path::new("hello/world"));
+  assert_eq!(borrowed.as_path(), Path::new("hello/world"));
+  assert_eq!(wrapped.as_path(), Path::new("hello/world"));
+}
+
+#[test]
 fn test_as_path_with_absolute_paths() {
   // Test with absolute paths
   #[cfg(target_family = "unix")]

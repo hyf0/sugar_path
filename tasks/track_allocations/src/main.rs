@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use arcstr::ArcStr;
 use mimalloc_safe::MiMalloc;
-use sugar_path::SugarPath;
+use sugar_path::{SugarPath, SugarPathBuf};
 
 const MEASUREMENTS: usize = 7;
 const TARGET_ENVIRONMENT: &str = if cfg!(target_env = "gnu") {
@@ -225,77 +225,77 @@ const SCENARIOS: &[Scenario] = &[
   },
   Scenario {
     name: "normalize / owned clean input via borrowed receiver -> PathBuf",
-    run: normalize_owned_clean_borrowed,
+    run: normalize_owned_clean,
   },
   Scenario {
     name: "normalize / owned clean input via owned receiver -> PathBuf",
-    run: normalize_owned_clean_owned,
+    run: normalize_owned_clean_consuming,
   },
   Scenario {
     name: "normalize / owned dirty input via borrowed receiver -> PathBuf",
-    run: normalize_owned_dirty_borrowed,
+    run: normalize_owned_dirty,
   },
   Scenario {
     name: "normalize / owned dirty input via owned receiver -> PathBuf",
-    run: normalize_owned_dirty_owned,
+    run: normalize_owned_dirty_consuming,
   },
   Scenario {
     name: "normalize / owned dot input via borrowed receiver -> PathBuf",
-    run: normalize_owned_dot_borrowed,
+    run: normalize_owned_dot,
   },
   Scenario {
     name: "normalize / owned dot input via owned receiver -> PathBuf",
-    run: normalize_owned_dot_owned,
+    run: normalize_owned_dot_consuming,
   },
   Scenario {
     name: "normalize / owned collapsing input via borrowed receiver -> PathBuf",
-    run: normalize_owned_collapse_borrowed,
+    run: normalize_owned_collapse,
   },
   Scenario {
     name: "normalize / owned collapsing input via owned receiver -> PathBuf",
-    run: normalize_owned_collapse_owned,
+    run: normalize_owned_collapse_consuming,
   },
   #[cfg(any(target_family = "unix", target_family = "windows"))]
   Scenario {
     name: "normalize / owned invalid input via borrowed receiver -> PathBuf",
-    run: normalize_owned_invalid_borrowed,
+    run: normalize_owned_invalid,
   },
   #[cfg(any(target_family = "unix", target_family = "windows"))]
   Scenario {
     name: "normalize / owned invalid input via owned receiver -> PathBuf",
-    run: normalize_owned_invalid_owned,
+    run: normalize_owned_invalid_consuming,
   },
   Scenario {
     name: "pipeline / dirty join via borrowed receiver -> PathBuf",
-    run: dirty_join_pathbuf_borrowed,
+    run: join_normalize_owned,
   },
   Scenario {
     name: "pipeline / dirty join via owned receiver -> PathBuf",
-    run: dirty_join_pathbuf_owned,
+    run: join_normalize_owned_consuming,
   },
   Scenario {
     name: "pipeline / dirty join via borrowed receiver -> String",
-    run: dirty_join_string_borrowed,
+    run: join_normalize_slash_owned,
   },
   Scenario {
     name: "pipeline / dirty join via owned receiver -> String",
-    run: dirty_join_string_owned,
+    run: join_normalize_slash_owned_consuming,
   },
   Scenario {
     name: "pipeline / clean join via borrowed receiver -> PathBuf",
-    run: clean_join_pathbuf_borrowed,
+    run: clean_join_normalize_owned,
   },
   Scenario {
     name: "pipeline / clean join via owned receiver -> PathBuf",
-    run: clean_join_pathbuf_owned,
+    run: clean_join_normalize_owned_consuming,
   },
   Scenario {
     name: "pipeline / clean join via borrowed receiver -> String",
-    run: clean_join_string_borrowed,
+    run: clean_join_normalize_slash_owned,
   },
   Scenario {
     name: "pipeline / clean join via owned receiver -> String",
-    run: clean_join_string_owned,
+    run: clean_join_normalize_slash_owned_consuming,
   },
   #[cfg(target_family = "windows")]
   Scenario {
@@ -329,12 +329,16 @@ const SCENARIOS: &[Scenario] = &[
     run: absolutize_with_relative_owned_base,
   },
   Scenario {
+    name: "absolutize_with / clean relative input + owned cwd -> absolute path (setup excluded)",
+    run: absolutize_with_clean_relative_owned_cwd,
+  },
+  Scenario {
     name: "relative / canonical native descendant -> natural result",
     run: relative_absolute,
   },
   Scenario {
     name: "relative / canonical native descendant -> PathBuf",
-    run: relative_absolute_pathbuf,
+    run: relative_absolute_into_owned,
   },
   Scenario { name: "relative / relative inputs -> relative path", run: relative_relative },
   Scenario {
@@ -420,16 +424,16 @@ const SCENARIOS: &[Scenario] = &[
   },
   Scenario {
     name: "to_slash / owned valid input via borrowed receiver -> String",
-    run: to_slash_owned_valid_borrowed,
+    run: to_slash_owned_valid,
   },
   Scenario {
     name: "to_slash / owned valid input via owned receiver -> String",
-    run: to_slash_owned_valid_owned,
+    run: to_slash_owned_valid_consuming,
   },
   #[cfg(any(target_family = "unix", target_family = "windows"))]
   Scenario {
     name: "to_slash_lossy / owned invalid input via owned receiver -> String",
-    run: to_slash_owned_invalid_owned,
+    run: to_slash_lossy_owned_invalid_consuming,
   },
   #[cfg(target_family = "windows")]
   Scenario {
@@ -440,59 +444,59 @@ const SCENARIOS: &[Scenario] = &[
   Scenario { name: "Windows / mixed separators -> slash text", run: windows_to_slash_mixed },
   Scenario {
     name: "Rolldown / cwd descendant via natural relative result -> String",
-    run: rolldown_descendant_string_natural,
+    run: rolldown_relative_to_slash,
   },
   Scenario {
     name: "Rolldown / cwd descendant via requested PathBuf result -> String",
-    run: rolldown_descendant_string_pathbuf,
+    run: rolldown_relative_to_consuming_slash,
   },
   Scenario {
     name: "Rolldown / cwd descendant via natural normalized result -> String",
-    run: rolldown_descendant_normalized_string_natural,
+    run: rolldown_relative_to_normalize_to_slash,
   },
   Scenario {
     name: "Rolldown / cwd descendant via requested PathBuf normalized result -> String",
-    run: rolldown_descendant_normalized_string_pathbuf,
+    run: rolldown_relative_to_consuming_normalize_to_slash,
   },
   Scenario {
     name: "Rolldown / upward relation via natural relative result -> String",
-    run: rolldown_upward_string_natural,
+    run: leading_parent_relative_to_slash,
   },
   Scenario {
     name: "Rolldown / upward relation via requested PathBuf result -> String",
-    run: rolldown_upward_string_pathbuf,
+    run: leading_parent_relative_to_consuming_slash,
   },
   Scenario {
     name: "Rolldown / upward relation via natural normalized result -> String",
-    run: rolldown_upward_normalized_string_natural,
+    run: leading_parent_relative_to_normalize_to_slash,
   },
   Scenario {
     name: "Rolldown / upward relation via requested PathBuf normalized result -> String",
-    run: rolldown_upward_normalized_string_pathbuf,
+    run: leading_parent_relative_to_consuming_normalize_to_slash,
   },
   Scenario {
     name: "Rolldown / cwd descendant via natural relative result -> ArcStr",
-    run: rolldown_descendant_arcstr_natural,
+    run: rolldown_relative_to_borrowed_slash_arcstr,
   },
   Scenario {
     name: "Rolldown / cwd descendant via natural relative result -> String -> ArcStr",
-    run: rolldown_descendant_arcstr_via_string_natural,
+    run: rolldown_relative_to_owned_slash_arcstr,
   },
   Scenario {
     name: "Rolldown / cwd descendant via requested PathBuf result -> String -> ArcStr",
-    run: rolldown_descendant_arcstr_via_string_pathbuf,
+    run: rolldown_relative_to_consuming_slash_arcstr,
   },
   Scenario {
     name: "Rolldown / upward relation via natural relative result -> ArcStr",
-    run: rolldown_upward_arcstr_natural,
+    run: leading_parent_relative_to_borrowed_slash_arcstr,
   },
   Scenario {
     name: "Rolldown / upward relation via natural relative result -> String -> ArcStr",
-    run: rolldown_upward_arcstr_via_string_natural,
+    run: leading_parent_relative_to_owned_slash_arcstr,
   },
   Scenario {
     name: "Rolldown / upward relation via requested PathBuf result -> String -> ArcStr",
-    run: rolldown_upward_arcstr_via_string_pathbuf,
+    run: leading_parent_relative_to_consuming_slash_arcstr,
   },
   Scenario {
     name: "Rolldown / sideEffects descendant via relative -> temporary text",
@@ -529,6 +533,7 @@ mod native_paths {
   pub const LEADING_PARENTS: &str = r"..\..\crates\rolldown\.\src\..\src\bundle\bundle.rs";
   pub const CANONICAL_LEADING_PARENTS: &str = r"..\..\chunks\shared.js";
   pub const RELATIVE_BASE: &str = r"crates\rolldown\src\module_loader";
+  pub const RELATIVE_CLEAN_INPUT: &str = r"src\module_loader\module_task.rs";
   pub const RELATIVE_INPUT: &str = r".\src\stages\..\bundle\bundle.rs";
   pub const RELATIVE_TARGET: &str = r"crates\rolldown\src\stages\generate_stage\mod.rs";
   pub const RELATIVE_CURRENT_BASE: &str = "";
@@ -589,6 +594,7 @@ mod native_paths {
   pub const LEADING_PARENTS: &str = "../../crates/rolldown/./src/../src/bundle/bundle.rs";
   pub const CANONICAL_LEADING_PARENTS: &str = "../../chunks/shared.js";
   pub const RELATIVE_BASE: &str = "crates/rolldown/src/module_loader";
+  pub const RELATIVE_CLEAN_INPUT: &str = "src/module_loader/module_task.rs";
   pub const RELATIVE_INPUT: &str = "./src/stages/../bundle/bundle.rs";
   pub const RELATIVE_TARGET: &str = "crates/rolldown/src/stages/generate_stage/mod.rs";
   pub const RELATIVE_CURRENT_BASE: &str = "";
@@ -742,7 +748,18 @@ fn normalize_invalid_clean(mode: RunMode) -> AllocationStats {
   })
 }
 
-fn normalize_owned_case_borrowed(mode: RunMode, input: &'static str) -> AllocationStats {
+fn normalize_owned_clean(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ABSOLUTE_CLEAN),
+    |path| {
+      let value = black_box(path.as_path()).normalize().into_owned();
+      black_box(value);
+    },
+  )
+}
+
+fn normalize_owned_case(mode: RunMode, input: &'static str) -> AllocationStats {
   run_prepared(
     mode,
     || PathBuf::from(input),
@@ -753,128 +770,150 @@ fn normalize_owned_case_borrowed(mode: RunMode, input: &'static str) -> Allocati
   )
 }
 
-// SugarPath v2 has no consuming normalization method. Keep the owned-receiver
-// baseline as an explicit paired row using the same operation so v3 can replace
-// only this body while preserving the scenario identity.
-fn normalize_owned_case_owned(mode: RunMode, input: &'static str) -> AllocationStats {
-  normalize_owned_case_borrowed(mode, input)
+fn normalize_owned_case_consuming(mode: RunMode, input: &'static str) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(input),
+    |path| {
+      let value = black_box(path).into_normalized();
+      black_box(value);
+    },
+  )
 }
 
-fn normalize_owned_clean_borrowed(mode: RunMode) -> AllocationStats {
-  normalize_owned_case_borrowed(mode, native_paths::ABSOLUTE_CLEAN)
+fn normalize_owned_clean_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_case_consuming(mode, native_paths::ABSOLUTE_CLEAN)
 }
 
-fn normalize_owned_clean_owned(mode: RunMode) -> AllocationStats {
-  normalize_owned_case_owned(mode, native_paths::ABSOLUTE_CLEAN)
+fn normalize_owned_dirty(mode: RunMode) -> AllocationStats {
+  normalize_owned_case(mode, native_paths::DIRTY)
 }
 
-fn normalize_owned_dirty_borrowed(mode: RunMode) -> AllocationStats {
-  normalize_owned_case_borrowed(mode, native_paths::DIRTY)
+fn normalize_owned_dirty_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_case_consuming(mode, native_paths::DIRTY)
 }
 
-fn normalize_owned_dirty_owned(mode: RunMode) -> AllocationStats {
-  normalize_owned_case_owned(mode, native_paths::DIRTY)
+fn normalize_owned_dot(mode: RunMode) -> AllocationStats {
+  normalize_owned_case(mode, ".")
 }
 
-fn normalize_owned_dot_borrowed(mode: RunMode) -> AllocationStats {
-  normalize_owned_case_borrowed(mode, ".")
+fn normalize_owned_dot_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_case_consuming(mode, ".")
 }
 
-fn normalize_owned_dot_owned(mode: RunMode) -> AllocationStats {
-  normalize_owned_case_owned(mode, ".")
+fn normalize_owned_collapse(mode: RunMode) -> AllocationStats {
+  normalize_owned_case(mode, native_paths::COLLAPSES_TO_CURRENT_DIRECTORY)
 }
 
-fn normalize_owned_collapse_borrowed(mode: RunMode) -> AllocationStats {
-  normalize_owned_case_borrowed(mode, native_paths::COLLAPSES_TO_CURRENT_DIRECTORY)
-}
-
-fn normalize_owned_collapse_owned(mode: RunMode) -> AllocationStats {
-  normalize_owned_case_owned(mode, native_paths::COLLAPSES_TO_CURRENT_DIRECTORY)
+fn normalize_owned_collapse_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_case_consuming(mode, native_paths::COLLAPSES_TO_CURRENT_DIRECTORY)
 }
 
 #[cfg(any(target_family = "unix", target_family = "windows"))]
-fn normalize_owned_invalid_borrowed(mode: RunMode) -> AllocationStats {
+fn normalize_owned_invalid(mode: RunMode) -> AllocationStats {
   run_prepared(mode, invalid_clean_path, |path| {
     black_box(black_box(path.as_path()).normalize().into_owned());
   })
 }
 
 #[cfg(any(target_family = "unix", target_family = "windows"))]
-fn normalize_owned_invalid_owned(mode: RunMode) -> AllocationStats {
-  // This intentionally matches the borrowed-receiver v2 operation. The paired
-  // row becomes the consuming owned-input path when the v3 API is applied.
-  normalize_owned_invalid_borrowed(mode)
+fn normalize_owned_invalid_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(mode, invalid_clean_path, |path| {
+    black_box(black_box(path).into_normalized());
+  })
 }
 
-fn join_to_pathbuf_borrowed(mode: RunMode, input: &'static str) -> AllocationStats {
+fn join_normalize_owned(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || PathBuf::from(native_paths::ROLLDOWN_CWD),
     |base| {
       let base = black_box(base);
-      let joined = base.join(black_box(Path::new(input)));
-      let normalized = joined.as_path().normalize().into_owned();
+      let joined = base.join(black_box(Path::new(native_paths::JOIN_RELATIVE)));
+      let normalized = joined.normalize().into_owned();
       black_box(normalized);
     },
   )
 }
 
-fn join_to_pathbuf_owned(mode: RunMode, input: &'static str) -> AllocationStats {
-  // SugarPath v2 has no consuming normalization method, so this is the paired
-  // old-API control for the future owned-receiver operation.
-  join_to_pathbuf_borrowed(mode, input)
+fn join_normalize_owned_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ROLLDOWN_CWD),
+    |base| {
+      let joined = black_box(base).join(black_box(Path::new(native_paths::JOIN_RELATIVE)));
+      black_box(joined.into_normalized());
+    },
+  )
 }
 
-fn join_to_string_borrowed(mode: RunMode, input: &'static str) -> AllocationStats {
+fn join_normalize_slash_owned(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || PathBuf::from(native_paths::ROLLDOWN_CWD),
     |base| {
       let base = black_box(base);
-      let joined = base.join(black_box(Path::new(input)));
-      let normalized = joined.as_path().normalize();
-      let slash = normalized.to_slash().expect("benchmark paths are valid UTF-8").into_owned();
+      let joined = base.join(black_box(Path::new(native_paths::JOIN_RELATIVE)));
+      let normalized = joined.normalize();
+      let slash = normalized.to_slash().into_owned();
       black_box(slash);
     },
   )
 }
 
-fn join_to_string_owned(mode: RunMode, input: &'static str) -> AllocationStats {
-  // SugarPath v2 has no consuming normalize/slash pipeline. Preserve an
-  // identical pair so the v3 implementation can reuse the owned buffers.
-  join_to_string_borrowed(mode, input)
+fn join_normalize_slash_owned_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ROLLDOWN_CWD),
+    |base| {
+      let joined = black_box(base).join(black_box(Path::new(native_paths::JOIN_RELATIVE)));
+      black_box(joined.into_normalized().into_slash());
+    },
+  )
 }
 
-fn dirty_join_pathbuf_borrowed(mode: RunMode) -> AllocationStats {
-  join_to_pathbuf_borrowed(mode, native_paths::JOIN_RELATIVE)
+fn clean_join_normalize_owned(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ROLLDOWN_CWD),
+    |base| {
+      let joined = black_box(base).join(black_box(Path::new(native_paths::JOIN_CLEAN)));
+      black_box(joined.normalize().into_owned());
+    },
+  )
 }
 
-fn dirty_join_pathbuf_owned(mode: RunMode) -> AllocationStats {
-  join_to_pathbuf_owned(mode, native_paths::JOIN_RELATIVE)
+fn clean_join_normalize_owned_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ROLLDOWN_CWD),
+    |base| {
+      let joined = black_box(base).join(black_box(Path::new(native_paths::JOIN_CLEAN)));
+      black_box(joined.into_normalized());
+    },
+  )
 }
 
-fn dirty_join_string_borrowed(mode: RunMode) -> AllocationStats {
-  join_to_string_borrowed(mode, native_paths::JOIN_RELATIVE)
+fn clean_join_normalize_slash_owned(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ROLLDOWN_CWD),
+    |base| {
+      let joined = black_box(base).join(black_box(Path::new(native_paths::JOIN_CLEAN)));
+      black_box(joined.normalize().to_slash().into_owned());
+    },
+  )
 }
 
-fn dirty_join_string_owned(mode: RunMode) -> AllocationStats {
-  join_to_string_owned(mode, native_paths::JOIN_RELATIVE)
-}
-
-fn clean_join_pathbuf_borrowed(mode: RunMode) -> AllocationStats {
-  join_to_pathbuf_borrowed(mode, native_paths::JOIN_CLEAN)
-}
-
-fn clean_join_pathbuf_owned(mode: RunMode) -> AllocationStats {
-  join_to_pathbuf_owned(mode, native_paths::JOIN_CLEAN)
-}
-
-fn clean_join_string_borrowed(mode: RunMode) -> AllocationStats {
-  join_to_string_borrowed(mode, native_paths::JOIN_CLEAN)
-}
-
-fn clean_join_string_owned(mode: RunMode) -> AllocationStats {
-  join_to_string_owned(mode, native_paths::JOIN_CLEAN)
+fn clean_join_normalize_slash_owned_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ROLLDOWN_CWD),
+    |base| {
+      let joined = black_box(base).join(black_box(Path::new(native_paths::JOIN_CLEAN)));
+      black_box(joined.into_normalized().into_slash());
+    },
+  )
 }
 
 #[cfg(target_family = "windows")]
@@ -927,8 +966,8 @@ fn absolutize_with_absolute(mode: RunMode) -> AllocationStats {
     mode,
     || (),
     |()| {
-      let base: Cow<'_, Path> = black_box(Cow::Borrowed(Path::new(native_paths::ABSOLUTE_BASE)));
-      let value = black_box(Path::new(native_paths::ABSOLUTE_CLEAN)).absolutize_with(base);
+      let cwd = black_box(Path::new(native_paths::ABSOLUTE_BASE));
+      let value = black_box(Path::new(native_paths::ABSOLUTE_CLEAN)).absolutize_with(cwd);
       black_box(value);
     },
   )
@@ -939,8 +978,8 @@ fn absolutize_with_relative(mode: RunMode) -> AllocationStats {
     mode,
     || (),
     |()| {
-      let base: Cow<'_, Path> = black_box(Cow::Borrowed(Path::new(native_paths::ABSOLUTE_BASE)));
-      let value = black_box(Path::new(native_paths::RELATIVE_INPUT)).absolutize_with(base);
+      let cwd = black_box(Path::new(native_paths::ABSOLUTE_BASE));
+      let value = black_box(Path::new(native_paths::RELATIVE_INPUT)).absolutize_with(cwd);
       black_box(value);
     },
   )
@@ -950,9 +989,21 @@ fn absolutize_with_relative_owned_base(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || PathBuf::from(native_paths::ABSOLUTE_BASE),
-    |base| {
-      let base: Cow<'_, Path> = black_box(Cow::Owned(base));
-      let value = black_box(Path::new(native_paths::RELATIVE_INPUT)).absolutize_with(base);
+    |cwd| {
+      let value =
+        black_box(Path::new(native_paths::RELATIVE_INPUT)).absolutize_with(black_box(cwd));
+      black_box(value);
+    },
+  )
+}
+
+fn absolutize_with_clean_relative_owned_cwd(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ABSOLUTE_BASE),
+    |cwd| {
+      let value =
+        black_box(Path::new(native_paths::RELATIVE_CLEAN_INPUT)).absolutize_with(black_box(cwd));
       black_box(value);
     },
   )
@@ -970,15 +1021,14 @@ fn relative_absolute(mode: RunMode) -> AllocationStats {
   )
 }
 
-fn relative_absolute_pathbuf(mode: RunMode) -> AllocationStats {
-  // The natural v2 result is already a PathBuf. Keep this separate requested
-  // output row so v3 can make the conversion explicit without renaming it.
+fn relative_absolute_into_owned(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || (),
     |()| {
       let value = black_box(Path::new(native_paths::ABSOLUTE_TARGET))
-        .relative(black_box(Path::new(native_paths::ABSOLUTE_BASE)));
+        .relative(black_box(Path::new(native_paths::ABSOLUTE_BASE)))
+        .into_owned();
       black_box(value);
     },
   )
@@ -1194,29 +1244,30 @@ fn to_slash_lossy_invalid_encoding(mode: RunMode) -> AllocationStats {
   })
 }
 
-fn to_slash_owned_valid_borrowed(mode: RunMode) -> AllocationStats {
+fn to_slash_owned_valid(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || PathBuf::from(native_paths::ABSOLUTE_CLEAN),
     |path| {
-      let value =
-        black_box(path.as_path()).to_slash().expect("benchmark paths are valid UTF-8").into_owned();
-      black_box(value);
+      black_box(black_box(path.as_path()).to_slash().into_owned());
     },
   )
 }
 
-fn to_slash_owned_valid_owned(mode: RunMode) -> AllocationStats {
-  // SugarPath v2 has no consuming slash conversion. This intentionally matches
-  // the borrowed-receiver row until the v3 owned-input implementation replaces it.
-  to_slash_owned_valid_borrowed(mode)
+fn to_slash_owned_valid_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || PathBuf::from(native_paths::ABSOLUTE_CLEAN),
+    |path| {
+      black_box(black_box(path).into_slash());
+    },
+  )
 }
 
 #[cfg(any(target_family = "unix", target_family = "windows"))]
-fn to_slash_owned_invalid_owned(mode: RunMode) -> AllocationStats {
+fn to_slash_lossy_owned_invalid_consuming(mode: RunMode) -> AllocationStats {
   run_prepared(mode, invalid_clean_path, |path| {
-    let value = black_box(path.as_path()).to_slash_lossy().into_owned();
-    black_box(value);
+    black_box(black_box(path).into_slash_lossy());
   })
 }
 
@@ -1244,159 +1295,64 @@ fn windows_to_slash_mixed(mode: RunMode) -> AllocationStats {
   )
 }
 
-fn relative_to_string_v2(
-  mode: RunMode,
-  target: &'static str,
-  base: &'static str,
-) -> AllocationStats {
+fn rolldown_relative_to_slash(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || (),
     |()| {
-      let relative = black_box(Path::new(target)).relative(black_box(Path::new(base)));
-      let slash = relative.to_slash().expect("benchmark paths are valid UTF-8").into_owned();
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_CWD)));
+      let slash = relative.to_slash().into_owned();
       black_box(slash);
     },
   )
 }
 
-fn relative_to_normalized_string_v2(
-  mode: RunMode,
-  target: &'static str,
-  base: &'static str,
-) -> AllocationStats {
+fn rolldown_relative_to_consuming_slash(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || (),
     |()| {
-      let relative = black_box(Path::new(target)).relative(black_box(Path::new(base)));
-      let normalized = relative.normalize();
-      let slash = normalized.to_slash().expect("benchmark paths are valid UTF-8").into_owned();
-      black_box(slash);
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_CWD)));
+      black_box(relative.into_owned().into_slash());
     },
   )
 }
 
-fn relative_to_arcstr_v2(
-  mode: RunMode,
-  target: &'static str,
-  base: &'static str,
-) -> AllocationStats {
+fn rolldown_relative_to_borrowed_slash_arcstr(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || (),
     |()| {
-      let relative = black_box(Path::new(target)).relative(black_box(Path::new(base)));
-      let slash = relative.to_slash().expect("benchmark paths are valid UTF-8");
-      black_box(ArcStr::from(slash));
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_CWD)));
+      black_box(ArcStr::from(relative.to_slash()));
     },
   )
 }
 
-fn relative_to_arcstr_via_string_v2(
-  mode: RunMode,
-  target: &'static str,
-  base: &'static str,
-) -> AllocationStats {
+fn rolldown_relative_to_owned_slash_arcstr(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
     || (),
     |()| {
-      let relative = black_box(Path::new(target)).relative(black_box(Path::new(base)));
-      let slash = relative.to_slash().expect("benchmark paths are valid UTF-8").into_owned();
-      black_box(ArcStr::from(slash));
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_CWD)));
+      black_box(ArcStr::from(relative.to_slash().into_owned()));
     },
   )
 }
 
-fn rolldown_descendant_string_natural(mode: RunMode) -> AllocationStats {
-  relative_to_string_v2(mode, native_paths::ROLLDOWN_TARGET, native_paths::ROLLDOWN_CWD)
-}
-
-fn rolldown_descendant_string_pathbuf(mode: RunMode) -> AllocationStats {
-  // The v2 natural result is already a PathBuf. Keep the requested-PathBuf
-  // scenario paired with it so v3 can make ownership explicit.
-  relative_to_string_v2(mode, native_paths::ROLLDOWN_TARGET, native_paths::ROLLDOWN_CWD)
-}
-
-fn rolldown_descendant_normalized_string_natural(mode: RunMode) -> AllocationStats {
-  relative_to_normalized_string_v2(mode, native_paths::ROLLDOWN_TARGET, native_paths::ROLLDOWN_CWD)
-}
-
-fn rolldown_descendant_normalized_string_pathbuf(mode: RunMode) -> AllocationStats {
-  // This intentionally matches the natural v2 pipeline.
-  relative_to_normalized_string_v2(mode, native_paths::ROLLDOWN_TARGET, native_paths::ROLLDOWN_CWD)
-}
-
-fn rolldown_upward_string_natural(mode: RunMode) -> AllocationStats {
-  relative_to_string_v2(
+fn rolldown_relative_to_consuming_slash_arcstr(mode: RunMode) -> AllocationStats {
+  run_prepared(
     mode,
-    native_paths::ROLLDOWN_PARENT_TARGET,
-    native_paths::ROLLDOWN_PARENT_BASE,
-  )
-}
-
-fn rolldown_upward_string_pathbuf(mode: RunMode) -> AllocationStats {
-  // The v2 natural result is already a PathBuf.
-  relative_to_string_v2(
-    mode,
-    native_paths::ROLLDOWN_PARENT_TARGET,
-    native_paths::ROLLDOWN_PARENT_BASE,
-  )
-}
-
-fn rolldown_upward_normalized_string_natural(mode: RunMode) -> AllocationStats {
-  relative_to_normalized_string_v2(
-    mode,
-    native_paths::ROLLDOWN_PARENT_TARGET,
-    native_paths::ROLLDOWN_PARENT_BASE,
-  )
-}
-
-fn rolldown_upward_normalized_string_pathbuf(mode: RunMode) -> AllocationStats {
-  // This intentionally matches the natural v2 pipeline.
-  relative_to_normalized_string_v2(
-    mode,
-    native_paths::ROLLDOWN_PARENT_TARGET,
-    native_paths::ROLLDOWN_PARENT_BASE,
-  )
-}
-
-fn rolldown_descendant_arcstr_natural(mode: RunMode) -> AllocationStats {
-  relative_to_arcstr_v2(mode, native_paths::ROLLDOWN_TARGET, native_paths::ROLLDOWN_CWD)
-}
-
-fn rolldown_descendant_arcstr_via_string_natural(mode: RunMode) -> AllocationStats {
-  relative_to_arcstr_via_string_v2(mode, native_paths::ROLLDOWN_TARGET, native_paths::ROLLDOWN_CWD)
-}
-
-fn rolldown_descendant_arcstr_via_string_pathbuf(mode: RunMode) -> AllocationStats {
-  // The requested-PathBuf v2 path is identical to its natural result.
-  relative_to_arcstr_via_string_v2(mode, native_paths::ROLLDOWN_TARGET, native_paths::ROLLDOWN_CWD)
-}
-
-fn rolldown_upward_arcstr_natural(mode: RunMode) -> AllocationStats {
-  relative_to_arcstr_v2(
-    mode,
-    native_paths::ROLLDOWN_PARENT_TARGET,
-    native_paths::ROLLDOWN_PARENT_BASE,
-  )
-}
-
-fn rolldown_upward_arcstr_via_string_natural(mode: RunMode) -> AllocationStats {
-  relative_to_arcstr_via_string_v2(
-    mode,
-    native_paths::ROLLDOWN_PARENT_TARGET,
-    native_paths::ROLLDOWN_PARENT_BASE,
-  )
-}
-
-fn rolldown_upward_arcstr_via_string_pathbuf(mode: RunMode) -> AllocationStats {
-  // The requested-PathBuf v2 path is identical to its natural result.
-  relative_to_arcstr_via_string_v2(
-    mode,
-    native_paths::ROLLDOWN_PARENT_TARGET,
-    native_paths::ROLLDOWN_PARENT_BASE,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_CWD)));
+      black_box(ArcStr::from(relative.into_owned().into_slash()));
+    },
   )
 }
 
@@ -1420,9 +1376,9 @@ fn rolldown_side_effects_descendant_strip_prefix(mode: RunMode) -> AllocationSta
     |()| {
       let target = black_box(Path::new(native_paths::ROLLDOWN_TARGET));
       let base = black_box(Path::new(native_paths::ROLLDOWN_CWD));
-      let relative: Cow<'_, Path> = match target.strip_prefix(base) {
+      let relative = match target.strip_prefix(base) {
         Ok(relative) => Cow::Borrowed(relative),
-        Err(_) => Cow::Owned(target.relative(base)),
+        Err(_) => target.relative(base),
       };
       black_box(relative.to_str().expect("benchmark paths are valid UTF-8"));
     },
@@ -1449,11 +1405,123 @@ fn rolldown_side_effects_upward_strip_prefix(mode: RunMode) -> AllocationStats {
     |()| {
       let target = black_box(Path::new(native_paths::ROLLDOWN_PARENT_TARGET));
       let base = black_box(Path::new(native_paths::ROLLDOWN_PARENT_BASE));
-      let relative: Cow<'_, Path> = match target.strip_prefix(base) {
+      let relative = match target.strip_prefix(base) {
         Ok(relative) => Cow::Borrowed(relative),
-        Err(_) => Cow::Owned(target.relative(base)),
+        Err(_) => target.relative(base),
       };
       black_box(relative.to_str().expect("benchmark paths are valid UTF-8"));
+    },
+  )
+}
+
+fn rolldown_relative_to_normalize_to_slash(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_CWD)));
+      let normalized = relative.normalize();
+      let slash = normalized.to_slash().into_owned();
+      black_box(slash);
+    },
+  )
+}
+
+fn rolldown_relative_to_consuming_normalize_to_slash(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_CWD)));
+      black_box(relative.into_owned().into_normalized().into_slash());
+    },
+  )
+}
+
+fn leading_parent_relative_to_slash(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_PARENT_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_PARENT_BASE)));
+      black_box(relative.to_slash().into_owned());
+    },
+  )
+}
+
+fn leading_parent_relative_to_normalize_to_slash(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_PARENT_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_PARENT_BASE)));
+      let normalized = relative.normalize();
+      let slash = normalized.to_slash().into_owned();
+      black_box(slash);
+    },
+  )
+}
+
+fn leading_parent_relative_to_consuming_normalize_to_slash(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_PARENT_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_PARENT_BASE)));
+      black_box(relative.into_owned().into_normalized().into_slash());
+    },
+  )
+}
+
+fn leading_parent_relative_to_borrowed_slash_arcstr(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_PARENT_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_PARENT_BASE)));
+      black_box(ArcStr::from(relative.to_slash()));
+    },
+  )
+}
+
+fn leading_parent_relative_to_owned_slash_arcstr(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_PARENT_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_PARENT_BASE)));
+      black_box(ArcStr::from(relative.to_slash().into_owned()));
+    },
+  )
+}
+
+fn leading_parent_relative_to_consuming_slash(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_PARENT_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_PARENT_BASE)));
+      black_box(relative.into_owned().into_slash());
+    },
+  )
+}
+
+fn leading_parent_relative_to_consuming_slash_arcstr(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || (),
+    |()| {
+      let relative = black_box(Path::new(native_paths::ROLLDOWN_PARENT_TARGET))
+        .relative(black_box(Path::new(native_paths::ROLLDOWN_PARENT_BASE)));
+      black_box(ArcStr::from(relative.into_owned().into_slash()));
     },
   )
 }

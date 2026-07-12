@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::path::{Path, PathBuf};
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use sugar_path::SugarPath;
+use sugar_path::{SugarPath, SugarPathBuf};
 
 mod support;
 
@@ -68,13 +68,10 @@ fn bench_normalize(criterion: &mut Criterion) {
         BatchSize::SmallInput,
       );
     });
-    // The v2 API has no consuming normalization method. Keeping the same
-    // baseline operation under this output-oriented ID lets v3 measure
-    // whether consuming the owned input improves the same PathBuf result.
     group.bench_function("owned_receiver/pathbuf_result", |bencher| {
       bencher.iter_batched(
         || PathBuf::from(case.path),
-        |input| black_box(black_box(input.as_path()).normalize().into_owned()),
+        |input| black_box(black_box(input).into_normalized()),
         BatchSize::SmallInput,
       );
     });
