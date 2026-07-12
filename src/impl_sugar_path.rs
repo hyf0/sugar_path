@@ -118,18 +118,61 @@ fn try_relative_lexically(target: &Path, base: &Path) -> Option<PathBuf> {
 
   let target = collect_lexical_normals(target, target_shape);
   let base = collect_lexical_normals(base, base_shape);
+  relative_from_normal_stacks(&base, &target)
+}
 
-  let common_len = target
+/// Walk an absolute path into its normal-component stack under the root (and
+/// Windows prefix). CurDir is ignored; ParentDir pops; RootDir clears normals.
+/// Pure relative inputs share this stack when resolved against one cwd.
+fn absolute_normal_stack<'a>(path: &'a Path) -> Option<OsStrVec<'a>> {
+  if !path.is_absolute() {
+    return None;
+  }
+
+  let mut stack = OsStrVec::with_capacity(16);
+  for component in path.components() {
+    match component {
+      Component::Prefix(_) => {
+        // Pure relative inputs inherit the cwd prefix implicitly. Different
+        // prefixes cannot arise when both sides resolve against the same cwd.
+      }
+      Component::RootDir => stack.clear(),
+      Component::CurDir => {}
+      Component::ParentDir => {
+        let _ = stack.pop();
+      }
+      Component::Normal(normal) => stack.push(normal),
+    }
+  }
+  Some(stack)
+}
+
+fn apply_relative_shape_to_stack<'a>(
+  cwd_stack: &OsStrVec<'a>,
+  shape: LexicalRelativeShape,
+  relative: &'a Path,
+) -> OsStrVec<'a> {
+  let kept = cwd_stack.len().saturating_sub(shape.unresolved_parents);
+  let mut stack = OsStrVec::with_capacity(kept + shape.surviving_normals);
+  stack.extend_from_slice(&cwd_stack[..kept]);
+  for normal in collect_lexical_normals(relative, shape) {
+    stack.push(normal);
+  }
+  stack
+}
+
+fn relative_from_normal_stacks(base: &OsStrVec<'_>, target: &OsStrVec<'_>) -> Option<PathBuf> {
+  let common_len = base
     .iter()
-    .zip(&base)
-    .take_while(|(target, base)| {
+    .zip(target.iter())
+    .take_while(|(from, to)| {
       #[cfg(target_family = "windows")]
       {
-        target.eq_ignore_ascii_case(base)
+        from.eq_ignore_ascii_case(to)
       }
       #[cfg(not(target_family = "windows"))]
       {
-        target == base
+        from == to
       }
     })
     .count();
@@ -137,13 +180,15 @@ fn try_relative_lexically(target: &Path, base: &Path) -> Option<PathBuf> {
   let up_len = base.len() - common_len;
   let target_suffix = &target[common_len..];
   #[cfg(target_family = "windows")]
-  if up_len == 0
-    && target_suffix.first().is_some_and(|component| {
-      !windows_standalone_relative_bytes_are_representable(component.as_encoded_bytes())
-    })
+  if target_suffix.iter().any(|component| memchr(b'/', component.as_encoded_bytes()).is_some())
+    || (up_len == 0
+      && target_suffix.first().is_some_and(|component| {
+        !windows_standalone_relative_bytes_are_representable(component.as_encoded_bytes())
+      }))
   {
     return None;
   }
+
   let component_count = up_len + target_suffix.len();
   let capacity = up_len * 2
     + target_suffix.iter().map(|component| component.len()).sum::<usize>()
@@ -160,17 +205,42 @@ fn try_relative_lexically(target: &Path, base: &Path) -> Option<PathBuf> {
     Some(PathBuf::from(relative))
   }
   #[cfg(not(target_family = "windows"))]
-  let mut relative = PathBuf::with_capacity(capacity);
-  #[cfg(not(target_family = "windows"))]
-  for _ in 0..up_len {
-    relative.push(Component::ParentDir);
+  {
+    let mut relative = PathBuf::with_capacity(capacity);
+    for _ in 0..up_len {
+      relative.push(Component::ParentDir);
+    }
+    for component in target_suffix {
+      relative.push(*component);
+    }
+    Some(relative)
   }
-  #[cfg(not(target_family = "windows"))]
-  for component in target_suffix {
-    relative.push(component);
-  }
-  #[cfg(not(target_family = "windows"))]
-  Some(relative)
+}
+
+/// When both inputs are pure relative but do not share a leading-parent count
+/// (or other cwd-independent shape), resolve them against one absolute cwd as
+/// normal-component stacks and build a single relative result. Avoids cloning
+/// cwd twice and allocating two intermediate absolute `PathBuf`s.
+///
+/// Callers that already hold shapes should use
+/// [`relative_both_relative_via_cwd_with_shapes`] so each path is classified once.
+fn try_relative_both_relative_via_cwd(target: &Path, base: &Path, cwd: &Path) -> Option<PathBuf> {
+  let target_shape = classify_lexical_relative(target)?;
+  let base_shape = classify_lexical_relative(base)?;
+  relative_both_relative_via_cwd_with_shapes(target, target_shape, base, base_shape, cwd)
+}
+
+fn relative_both_relative_via_cwd_with_shapes(
+  target: &Path,
+  target_shape: LexicalRelativeShape,
+  base: &Path,
+  base_shape: LexicalRelativeShape,
+  cwd: &Path,
+) -> Option<PathBuf> {
+  let cwd_stack = absolute_normal_stack(cwd)?;
+  let base_resolved = apply_relative_shape_to_stack(&cwd_stack, base_shape, base);
+  let target_resolved = apply_relative_shape_to_stack(&cwd_stack, target_shape, target);
+  relative_from_normal_stacks(&base_resolved, &target_resolved)
 }
 
 #[cfg(target_family = "windows")]
@@ -823,7 +893,30 @@ fn try_relative_outcome<'a>(
     return Ok(outcome);
   }
 
-  // Slow path: avoid current_dir() for already-absolute paths.
+  // Pure lexical relative pairs only (no prefix/root). Windows drive-relative
+  // inputs are `!has_root()` but carry a Prefix — they must keep try_absolutize
+  // so ambient relative uses per-drive `std::path::absolute`, not absolutize_with
+  // against the process cwd. Classify once; reuse shapes for the stack resolve.
+  if let (Some(target_shape), Some(base_shape)) =
+    (classify_lexical_relative(target_path), classify_lexical_relative(base_path))
+  {
+    let cwd = try_get_current_dir()?;
+    if let Some(relative) = relative_both_relative_via_cwd_with_shapes(
+      target_path,
+      target_shape,
+      base_path,
+      base_shape,
+      cwd.as_ref(),
+    ) {
+      return Ok(RelativeOutcome::Native(relative));
+    }
+    let base = base_path.absolutize_with(cwd.as_ref()).into_owned();
+    let target = target_path.absolutize_with(cwd.as_ref()).into_owned();
+    return Ok(relative_from_resolved(base, target));
+  }
+
+  // Slow path: avoid current_dir() for already-absolute paths. Windows
+  // drive-relative receivers still take try_absolutize here.
   let base = if base_path.is_absolute() {
     normalize_for_resolution(base_path).into_owned()
   } else {
@@ -851,6 +944,13 @@ where
   }
 
   assert!(cwd.as_ref().is_absolute(), "explicit current directory must be absolute");
+
+  // Same pure-lexical gate as ambient relative. try_relative_both_relative_via_cwd
+  // already requires classification; do not treat every !has_root path as pure
+  // relative (Windows drive-relative keeps absolutize_with / drive rules below).
+  if let Some(relative) = try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref()) {
+    return RelativeOutcome::Native(relative);
+  }
 
   let base = if base_path.is_absolute() {
     normalize_for_resolution(base_path).into_owned()

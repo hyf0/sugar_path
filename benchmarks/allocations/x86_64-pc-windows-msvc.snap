@@ -48,9 +48,9 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | relative / relative inputs -> relative path | 1 | 0 | 0 |
 | relative / dotted relative inputs -> relative path | 1 | 0 | 0 |
 | relative / equal leading-parent inputs -> relative path | 1 | 0 | 0 |
-| relative / unequal leading-parent inputs -> relative path | 5 | 0 | 2 |
+| relative / unequal leading-parent inputs -> relative path | 1 | 0 | 0 |
 | relative / p99-depth equal leading-parent inputs -> relative path | 1 | 0 | 0 |
-| relative / p99-depth unequal leading-parent inputs -> relative path | 5 | 0 | 2 |
+| relative / p99-depth unequal leading-parent inputs -> relative path | 1 | 0 | 0 |
 | relative / current-directory spellings -> relative path | 0 | 0 | 0 |
 | relative / dotted slow path -> relative path | 4 | 0 | 0 |
 | relative / invalid-encoding absolute target -> relative path (setup excluded) | 3 | 0 | 0 |

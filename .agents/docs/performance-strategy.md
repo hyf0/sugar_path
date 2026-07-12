@@ -164,12 +164,16 @@ This checkpoint is historical and predates the breaking design: the final API de
 7. Consider de-monomorphizing `relative` for consumer code size. Treat this as compile-time/binary-size work unless runtime evidence says otherwise.
 8. Attempt explicit SIMD only if instruction and profile data still show separator or common-prefix scanning as a leading cost. Completed for the remaining case-sensitive common-prefix loop by `0da5a61`; existing `memchr` scans and Windows comparison stay unchanged.
 
-## Remaining consumer-backed directions
+## Remaining library directions (corrected)
 
-- Keep the Windows native-separator-aware scan under the native CI allocation and correctness gates. The current snapshots prove a zero-allocation canonical descendant and one-allocation ordinary final `String`; the drive, UNC, verbatim, device, mixed-separator, invalid-wide, and exact-spelling matrix must remain intact when the scan changes.
-- Migrate Rolldown's known-UTF-8 `stabilize_id` and sourcemap endpoints to `relative(base).into_owned().into_slash()` without changing their distinct empty-result handling. The target is one reusable final `String` buffer with no second result allocation. Do not use a lossy-named operation, and reconsider a public fused method only if an end-to-end final-container benchmark later shows that ordinary composition cannot meet the target.
-- Consider making normalized module IDs an explicit Rolldown invariant. All 4,901 observed normalization calls were clean borrowed no-ops, so validating once at an ingestion boundary could remove repeated scans more effectively than another SugarPath classifier branch. This is a Rolldown data-model change, not a library fast path.
-- Revisit direct ArcStr initialization only with a caller-owned output sink or exact-length writer benchmark. ArcStr cannot adopt the current `String` allocation, and a SugarPath dependency on ArcStr would be inappropriate; the integration boundary must stay generic and prove that its callback or writer overhead is lower than the saved copy.
+Clean-path fast cases (0-alloc normalize, absolute absolutize, borrowable descendant `relative`, clean owned normalize/slash, owned-cwd `absolutize_with` reuse) are done and gated. **Slow path means the full general algorithm, not a rare edge:** dirty normalize, non-borrowable `relative` (upward, unequal parents, complex roots), dirty join pipelines, and invalid-encoding rebuilds. Those are the default path for many inputs and remain the **in-crate optimization target**.
+
+- **Recorded unequal leading-parent relative improvement:** pure relative pairs that miss the equal-parent lexical hit now resolve both sides against one ambient cwd as normal-component stacks and allocate only the result buffer (allocation hard gate: 5 alloc / multi-realloc → 1 / 0 for shallow and p99 unequal rows). Absolute/absolute and equal-parent hits still return earlier and are untaxed. Same-machine Criterion on Apple ARM64 with `cached_current_dir` saw about 50% wall-time reduction on the shallow unequal workload and about 35% on the p99 unequal workload (directional local evidence; continuous CodSpeed remains Linux corroboration).
+- Still open on the general path: dirty join→PathBuf/String intermediate costs (2–3 alloc), invalid-encoding absolute relative rebuilds, and any further cheapening of dirty `normalize_inner` without regressing clean 0-alloc gates.
+- Keep the Windows native-separator-aware scan under native CI allocation and correctness gates (drive, UNC, verbatim, device, mixed-separator, invalid-wide, exact spelling).
+- De-monomorphize `relative` only with binary-size / `llvm-lines` evidence. More SIMD only with profile proof. No public fused relative-to-string API and no ArcStr dependency in this crate by default.
+
+Consumer adoption and app-level invariants are **out of this library backlog**.
 
 ## Boshen plan applicability audit
 
