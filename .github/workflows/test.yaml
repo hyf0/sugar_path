@@ -40,6 +40,10 @@ jobs:
         run: |
           cargo fmt --all --check
           cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --workspace --all-features --no-deps
       - name: Test default features
         run: cargo test --locked --workspace
       - name: Test all features

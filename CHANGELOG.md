@@ -43,10 +43,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Replace `to_slash().unwrap()` with `to_slash()` when valid UTF-8 is an invariant, and use `try_to_slash()` when invalid encoding is recoverable.
 - Pass cwd directly to `absolutize_with` and `relative_with`; do not wrap it in `Cow::Borrowed` or `Cow::Owned`.
 
-### Pending integration
-
-- Migrate Rolldown's known-UTF-8 package side-effects, stable ID, and sourcemap call sites after this breaking API is released, preserving each caller's handling of an empty relative result.
-
 ## [2.0.1](https://github.com/hyf0/sugar_path/compare/v2.0.0...v2.0.1) - 2026-02-23
 
 ### Fixed
@@ -57,7 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - polish README.md
 
-## [2.0.0](https://github.com/hyf0/sugar_path/compare/v1.2.0...v2.0.0) - 2025-10-21
+## [2.0.0](https://github.com/hyf0/sugar_path/compare/v1.2.1...v2.0.0) - 2025-10-21
 
 ### Other
 

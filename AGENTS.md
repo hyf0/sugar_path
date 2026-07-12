@@ -19,6 +19,9 @@ cargo test --test normalize unix      # run specific test fn
 # Lint (CI runs with -D warnings — zero warnings allowed)
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
+# Documentation (CI treats rustdoc warnings as errors)
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --all-features --no-deps
+
 # Format (2-space indent, enforced in CI)
 cargo fmt --all --check     # check only
 cargo fmt --all             # fix
@@ -37,7 +40,8 @@ cargo allocs-rolldown --check benchmarks/allocations/$(rustc -vV | sed -n 's|hos
 
 Two extension traits over standard path types: `SugarPath` adds borrowed operations to `Path` and `str`/`String`; `SugarPathBuf` adds consuming operations that can reuse an owned `PathBuf`.
 
-- **`src/sugar_path.rs`** — Trait definition with doc examples
+- **`README.md` / `src/lib.rs`** — Task-oriented user entry point and docs.rs crate landing page
+- **`src/sugar_path.rs`** — Borrowed trait definition and authoritative method contracts
 - **`src/sugar_path_buf.rs`** — Consuming `PathBuf` trait definition with doc examples
 - **`src/impl_sugar_path.rs`** — All implementations. Two impl blocks: one for `Path`, one for `str`; `String` and other string-like values use normal deref method lookup. Contains `normalize_inner()`, `needs_normalization()`, `relative_str()` and helper functions
 - **`src/utils.rs`** — `get_current_dir()` helper for `absolutize()`

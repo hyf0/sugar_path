@@ -14,7 +14,7 @@ Earlier `Cow`-input, separate borrowed-relative, and fused relative-to-string AP
 
 ## Public surface and implementation boundary
 
-[`src/sugar_path.rs`](../../src/sugar_path.rs) and [`src/sugar_path_buf.rs`](../../src/sugar_path_buf.rs) define the sealed traits, lifetimes, return types, panic behavior, and user-facing examples. [`src/impl_sugar_path.rs`](../../src/impl_sugar_path.rs) owns algorithms, fast paths, platform branches, and private outcome types. [`src/lib.rs`](../../src/lib.rs) keeps the public exports small. Private fused work is allowed when it improves the implementation, but it does not create another public method unless a consumer benchmark justifies a distinct caller-visible contract.
+The root [`README`](../../README.md) is the task-oriented entry point: it helps users select a method family and states the lexical, host-native, cwd, encoding, and ownership boundaries without repeating every platform corner case. [`src/lib.rs`](../../src/lib.rs) is the docs.rs landing page and presents the same mental model through intra-doc links. [`src/sugar_path.rs`](../../src/sugar_path.rs) and [`src/sugar_path_buf.rs`](../../src/sugar_path_buf.rs) are authoritative for each method's borrowing, error, panic, and platform contract. [`src/impl_sugar_path.rs`](../../src/impl_sugar_path.rs) owns algorithms, fast paths, platform branches, and private outcome types. Private fused work is allowed when it improves the implementation, but it does not create another public method unless a consumer benchmark justifies a distinct caller-visible contract.
 
 ## Allocation is part of the contract
 

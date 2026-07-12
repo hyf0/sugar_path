@@ -1,81 +1,97 @@
-//! Host-native lexical path manipulation with borrowed and consuming APIs.
+#![warn(missing_docs, rustdoc::broken_intra_doc_links)]
+//! Host-native lexical path manipulation as extension methods on standard Rust types.
 //!
-//! [`SugarPath`] is a sealed extension trait for `Path` and `str`; owned path and string types reach it through normal deref method lookup. [`SugarPathBuf`] contains only consuming operations for which an owned `PathBuf` can be reused. All path operations support the full standard-library native path domain, including non-UTF-8 `OsStr` values.
+//! SugarPath adds normalization, absolutization, relative paths, and slash
+//! conversion without introducing a wrapper path type. Path-producing methods
+//! accept the full native [`Path`](std::path::Path) domain, including non-UTF-8 paths; conversion
+//! to [`str`] or [`String`] makes the Unicode policy explicit.
+//!
+//! Import [`SugarPath`] for borrowed operations on [`Path`](std::path::Path) and `str`. Values
+//! such as [`PathBuf`](std::path::PathBuf) and [`String`] use the same methods through deref method
+//! lookup. Import [`SugarPathBuf`] for consuming operations that may reuse an
+//! owned path buffer.
 //!
 //! # Quick start
 //!
 //! ```rust
-//! use std::path::Path;
+//! use std::path::{Path, PathBuf};
 //! use sugar_path::{SugarPath, SugarPathBuf};
 //!
-//! assert_eq!("foo/./bar/../baz".normalize(), Path::new("foo/baz"));
+//! let input = PathBuf::from("workspace")
+//!   .join("src")
+//!   .join("..")
+//!   .join("dist")
+//!   .join("assets");
 //!
-//! #[cfg(target_family = "unix")]
-//! let (target, base, expected) = (Path::new("/workspace/src/index.js"), Path::new("/workspace"), Path::new("src/index.js"));
-//! #[cfg(target_family = "windows")]
-//! let (target, base, expected) = (Path::new(r"C:\workspace\src\index.js"), Path::new(r"C:\workspace"), Path::new(r"src\index.js"));
+//! let normalized = input.normalize();
+//! let expected = Path::new("workspace").join("dist").join("assets");
+//! assert_eq!(&*normalized, expected);
 //!
-//! let relative = target.relative(base);
-//! assert_eq!(relative, expected);
-//!
-//! let slash = relative.into_owned().into_slash();
-//! assert_eq!(slash, "src/index.js");
+//! // The receiver is the target: target.relative(base).
+//! let relative = normalized.relative("workspace");
+//! assert_eq!(&*relative, Path::new("dist").join("assets"));
+//! assert_eq!(relative.into_owned().into_slash(), "dist/assets");
 //! ```
 //!
-//! `normalize` resolves `.` and `..`, collapses redundant native separators, and preserves one trailing separator on a non-root path. It is purely lexical: it does not inspect the filesystem or resolve symlinks. `relative` instead follows Node-style relative output, returning an empty path for equal inputs and removing a target's trailing separator.
+//! # Choosing an API
 //!
-//! ```rust
-//! use std::path::Path;
-//! use sugar_path::SugarPath;
+//! | Task | Borrowed or non-consuming | Consuming [`PathBuf`](std::path::PathBuf) |
+//! | --- | --- | --- |
+//! | Normalize | [`SugarPath::normalize`] | [`SugarPathBuf::into_normalized`] |
+//! | Make absolute | [`SugarPath::absolutize`], [`SugarPath::try_absolutize`], [`SugarPath::absolutize_with`] | — |
+//! | Make relative | [`SugarPath::relative`], [`SugarPath::try_relative`], [`SugarPath::relative_with`] | — |
+//! | Convert separators | [`SugarPath::to_slash`], [`SugarPath::try_to_slash`], [`SugarPath::to_slash_lossy`] | [`SugarPathBuf::into_slash`], [`SugarPathBuf::try_into_slash`], [`SugarPathBuf::into_slash_lossy`] |
+//! | View text as a path | [`SugarPath::as_path`] | — |
 //!
-//! #[cfg(target_family = "unix")]
-//! assert_eq!(Path::new("foo//bar/").normalize(), Path::new("foo/bar/"));
+//! The ambient [`SugarPath::absolutize`] and [`SugarPath::relative`] methods
+//! panic only when required ambient path resolution fails. Their `try_*` forms
+//! expose the same failure as [`std::io::Error`]. The `*_with` methods use an
+//! explicit cwd and never read ambient cwd state.
 //!
-//! #[cfg(target_family = "windows")]
-//! assert_eq!(Path::new("foo\\\\bar\\").normalize(), Path::new("foo\\bar\\"));
-//! ```
+//! Strict slash conversion panics for invalid Unicode, fallible conversion
+//! preserves failure without replacement, and only methods named `lossy`
+//! insert `U+FFFD`.
 //!
-//! # Current-directory operations
+//! # Lexical and host-native semantics
 //!
-//! [`SugarPath::absolutize`] and [`SugarPath::relative`] read process cwd only when their inputs require it and panic if that lookup fails. [`SugarPath::try_absolutize`] and [`SugarPath::try_relative`] expose the same failure as `io::Error`. [`SugarPath::absolutize_with`] and [`SugarPath::relative_with`] accept an explicit absolute cwd, never read ambient cwd state, and accept either a borrowed path or an owned `PathBuf` directly.
+//! These operations transform path components only. They do not access the
+//! filesystem, check whether a path exists, or resolve symbolic links.
+//! Lexically removing `..` therefore does not prove filesystem containment and
+//! must not be used as a security boundary. Use [`std::fs::canonicalize`] when
+//! physical filesystem identity is required.
 //!
-//! ```rust
-//! use std::path::{Path, PathBuf};
-//! use sugar_path::SugarPath;
+//! Parsing follows the compilation target's [`std::path`] rules. SugarPath
+//! does not parse Windows syntax on Unix or expose a caller-selected path
+//! syntax. [`SugarPath::normalize`] preserves one trailing separator on a
+//! non-root path. [`SugarPath::relative`] returns an empty path for equal inputs
+//! and removes a target's non-root trailing separator.
 //!
-//! #[cfg(target_family = "unix")]
-//! {
-//!   assert_eq!("src/main.rs".absolutize_with(Path::new("/workspace")), Path::new("/workspace/src/main.rs"));
-//!   assert_eq!("src/main.rs".absolutize_with(PathBuf::from("/workspace")), Path::new("/workspace/src/main.rs"));
-//! }
+//! # Ownership and native encoding
 //!
-//! #[cfg(target_family = "windows")]
-//! {
-//!   assert_eq!(r"src\main.rs".absolutize_with(Path::new(r"C:\workspace")), Path::new(r"C:\workspace\src\main.rs"));
-//!   assert_eq!(Path::new("C:foo").absolutize_with(Path::new(r"D:\cwd")), Path::new("C:foo"));
-//! }
-//! ```
+//! Borrowed [`Cow`](std::borrow::Cow) results never depend on a `base` or `cwd`
+//! lifetime. They normally borrow from the receiver; normalization may also
+//! return the static current-directory path `.`. An already-normalized path or
+//! clean relative descendant can therefore avoid a result allocation. Results
+//! that require a new buffer are owned. Call
+//! [`Cow::into_owned`](std::borrow::Cow::into_owned) only when an owned
+//! [`PathBuf`](std::path::PathBuf) is required.
 //!
-//! An explicit cwd is validated only if the result needs it. On Windows, a drive-relative receiver such as `C:foo` remains drive-relative when an explicit cwd belongs to another drive, because that cwd does not contain drive C's remembered cwd.
+//! Path-producing operations preserve arbitrary native encoding. Slash
+//! conversion is the boundary where callers choose strict, recoverable, or
+//! lossy Unicode behavior.
 //!
-//! # Unicode and slash conversion
+//! # Cargo features
 //!
-//! [`SugarPath::to_slash`] and [`SugarPathBuf::into_slash`] are the ergonomic strict conversions and panic for invalid Unicode. The `try_*` forms preserve failure without replacement, while the explicitly `lossy` forms replace invalid encoding with `U+FFFD`.
+//! - `cached_current_dir` caches the first successful ambient cwd lookup for
+//!   processes that treat cwd as stable. Later `std::env::set_current_dir`
+//!   calls are not observed. Explicit-cwd methods remain independent, and
+//!   Windows drive-relative paths still use authoritative per-drive cwd state.
+//! - `codspeed` enables maintainer benchmark instrumentation and is not intended
+//!   for downstream applications.
 //!
-//! ```rust
-//! use std::path::Path;
-//! use sugar_path::SugarPath;
-//!
-//! #[cfg(target_family = "unix")]
-//! let path = Path::new("src/main.rs");
-//! #[cfg(target_family = "windows")]
-//! let path = Path::new(r"src\main.rs");
-//!
-//! assert_eq!(path.to_slash(), "src/main.rs");
-//! assert_eq!(path.try_to_slash().as_deref(), Some("src/main.rs"));
-//! ```
-//!
-//! `relative` returns `Cow<Path>` directly. A canonical descendant can borrow its exact suffix from the receiver; call `Cow::into_owned` only when a `PathBuf` or an owned string is required. The ordinary owned slash-string composition is `target.relative(base).into_owned().into_slash()`.
+//! See the [README](https://github.com/hyf0/sugar_path) for platform notes and
+//! the [changelog](https://github.com/hyf0/sugar_path/blob/main/CHANGELOG.md)
+//! for release and migration information.
 
 mod impl_sugar_path;
 mod sugar_path;
