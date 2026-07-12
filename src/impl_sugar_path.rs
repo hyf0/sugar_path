@@ -9,6 +9,8 @@ use std::{
 use memchr::{memchr, memrchr};
 use smallvec::SmallVec;
 
+#[cfg(not(unix))]
+use crate::encoded_arena::{EncodedArena, EncodedFragment, with_encoded_arena};
 use crate::{SugarPath, utils::try_get_current_dir};
 
 type StrVec<'a> = SmallVec<[&'a str; 8]>;
@@ -24,7 +26,10 @@ enum TrailingSeparator {
 /// deeper than the component stack fall back to `normalize_inner`.
 const OWNED_NORMALIZE_STACK_ARENA: usize = 512;
 const OWNED_NORMALIZE_COMPONENT_STACK: usize = 24;
+#[cfg(not(unix))]
+const NATIVE_NORMALIZE_COMPONENT_STACK: usize = 32;
 
+#[cfg(unix)]
 #[inline]
 fn push_owned_normalize_arena(
   arena: &mut [u8; OWNED_NORMALIZE_STACK_ARENA],
@@ -38,6 +43,158 @@ fn push_owned_normalize_arena(
   arena[start..start + bytes.len()].copy_from_slice(bytes);
   *arena_len += bytes.len();
   Some((start as u16, *arena_len as u16))
+}
+
+#[cfg(target_family = "windows")]
+#[derive(Clone, Copy)]
+enum WindowsPrefixPlan<'id> {
+  VerbatimDisk { drive: u8 },
+  DeviceNs { device: EncodedFragment<'id> },
+  Unc { server: EncodedFragment<'id>, share: EncodedFragment<'id> },
+  Disk { drive: u8 },
+  RawVerbatim { raw: EncodedFragment<'id> },
+}
+
+#[cfg(target_family = "windows")]
+#[derive(Clone, Copy)]
+enum BorrowedWindowsPrefixPlan<'a> {
+  VerbatimDisk { drive: u8 },
+  DeviceNs { device: &'a OsStr },
+  Unc { server: &'a OsStr, share: &'a OsStr },
+  Disk { drive: u8 },
+  RawVerbatim { raw: &'a OsStr },
+}
+
+#[cfg(target_family = "windows")]
+impl<'id> WindowsPrefixPlan<'id> {
+  fn write_to<const N: usize>(self, arena: &EncodedArena<'id, N>, output: &mut OsString) {
+    match self {
+      Self::VerbatimDisk { drive } => {
+        output.push(r"\\?\");
+        push_ascii_byte(output, drive);
+        output.push(":");
+      }
+      Self::DeviceNs { device } => {
+        output.push(r"\\.\");
+        arena.push_to(output, device);
+      }
+      Self::Unc { server, share } => {
+        output.push(r"\\");
+        arena.push_to(output, server);
+        output.push(r"\");
+        arena.push_to(output, share);
+      }
+      Self::Disk { drive } => {
+        push_ascii_byte(output, drive);
+        output.push(":");
+      }
+      Self::RawVerbatim { raw } => arena.push_to(output, raw),
+    }
+  }
+
+  fn prefix_only_suffix(self) -> Option<&'static str> {
+    match self {
+      Self::Unc { .. } => Some(r"\"),
+      Self::Disk { .. } => Some("."),
+      _ => None,
+    }
+  }
+
+  fn root_is_optional(self) -> bool {
+    matches!(self, Self::DeviceNs { .. } | Self::RawVerbatim { .. })
+  }
+}
+
+#[cfg(target_family = "windows")]
+impl BorrowedWindowsPrefixPlan<'_> {
+  fn write_to(self, output: &mut OsString) {
+    match self {
+      Self::VerbatimDisk { drive } => {
+        output.push(r"\\?\");
+        push_ascii_byte(output, drive);
+        output.push(":");
+      }
+      Self::DeviceNs { device } => {
+        output.push(r"\\.\");
+        output.push(device);
+      }
+      Self::Unc { server, share } => {
+        output.push(r"\\");
+        output.push(server);
+        output.push(r"\");
+        output.push(share);
+      }
+      Self::Disk { drive } => {
+        push_ascii_byte(output, drive);
+        output.push(":");
+      }
+      Self::RawVerbatim { raw } => output.push(raw),
+    }
+  }
+
+  fn prefix_only_suffix(self) -> Option<&'static str> {
+    match self {
+      Self::Unc { .. } => Some(r"\"),
+      Self::Disk { .. } => Some("."),
+      _ => None,
+    }
+  }
+
+  fn root_is_optional(self) -> bool {
+    matches!(self, Self::DeviceNs { .. } | Self::RawVerbatim { .. })
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn windows_prefix_plan<'id, const N: usize>(
+  arena: &mut EncodedArena<'id, N>,
+  prefix: std::path::PrefixComponent<'_>,
+  drive_spelling: Option<u8>,
+) -> Option<WindowsPrefixPlan<'id>> {
+  match prefix.kind() {
+    std::path::Prefix::VerbatimDisk(drive) => {
+      Some(WindowsPrefixPlan::VerbatimDisk { drive: drive_spelling.unwrap_or(drive) })
+    }
+    std::path::Prefix::DeviceNS(device) => {
+      Some(WindowsPrefixPlan::DeviceNs { device: arena.store_os_str(device)? })
+    }
+    std::path::Prefix::UNC(server, share) => Some(WindowsPrefixPlan::Unc {
+      server: arena.store_os_str(server)?,
+      share: arena.store_os_str(share)?,
+    }),
+    std::path::Prefix::Disk(drive) => {
+      Some(WindowsPrefixPlan::Disk { drive: drive_spelling.unwrap_or(drive) })
+    }
+    std::path::Prefix::Verbatim(_) | std::path::Prefix::VerbatimUNC(_, _) => {
+      Some(WindowsPrefixPlan::RawVerbatim { raw: arena.store_os_str(prefix.as_os_str())? })
+    }
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn borrowed_windows_prefix_plan<'a>(
+  prefix: std::path::PrefixComponent<'a>,
+  drive_spelling: Option<u8>,
+) -> BorrowedWindowsPrefixPlan<'a> {
+  match prefix.kind() {
+    std::path::Prefix::VerbatimDisk(drive) => {
+      BorrowedWindowsPrefixPlan::VerbatimDisk { drive: drive_spelling.unwrap_or(drive) }
+    }
+    std::path::Prefix::DeviceNS(device) => BorrowedWindowsPrefixPlan::DeviceNs { device },
+    std::path::Prefix::UNC(server, share) => BorrowedWindowsPrefixPlan::Unc { server, share },
+    std::path::Prefix::Disk(drive) => {
+      BorrowedWindowsPrefixPlan::Disk { drive: drive_spelling.unwrap_or(drive) }
+    }
+    std::path::Prefix::Verbatim(_) | std::path::Prefix::VerbatimUNC(_, _) => {
+      BorrowedWindowsPrefixPlan::RawVerbatim { raw: prefix.as_os_str() }
+    }
+  }
+}
+
+#[cfg(target_family = "windows")]
+fn push_ascii_byte(output: &mut OsString, byte: u8) {
+  let bytes = [byte];
+  output.push(str::from_utf8(&bytes).expect("Windows drive prefixes are ASCII"));
 }
 
 enum RelativeOutcome<'a> {
@@ -559,13 +716,11 @@ fn normalize_owned_path_buf_via_inner(mut path: PathBuf, trailing: TrailingSepar
   }
 }
 
+#[cfg(unix)]
 fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) -> PathBuf {
-  let preserve_trailing = trailing == TrailingSeparator::Preserve && has_trailing_separator(&path);
-  #[cfg(target_family = "windows")]
-  let original_len = path.as_os_str().len();
-  #[cfg(target_family = "windows")]
-  let drive_spelling = windows_drive_spelling(&path);
+  use std::os::unix::ffi::OsStringExt;
 
+  let preserve_trailing = trailing == TrailingSeparator::Preserve && has_trailing_separator(&path);
   let mut arena = [0u8; OWNED_NORMALIZE_STACK_ARENA];
   let mut arena_len = 0usize;
   let mut stack: [(u16, u16); OWNED_NORMALIZE_COMPONENT_STACK] =
@@ -588,50 +743,7 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
   for component in path.components() {
     match component {
       #[cfg(target_family = "windows")]
-      Component::Prefix(p) => {
-        let start = arena_len;
-        let prefix_shape = match p.kind() {
-          std::path::Prefix::VerbatimDisk(drive) => {
-            let drive = [drive_spelling.unwrap_or(drive)];
-            (push_owned_normalize_arena(&mut arena, &mut arena_len, b"\\\\?\\").is_some()
-              && push_owned_normalize_arena(&mut arena, &mut arena_len, &drive).is_some()
-              && push_owned_normalize_arena(&mut arena, &mut arena_len, b":").is_some())
-            .then_some((None, false))
-          }
-          std::path::Prefix::DeviceNS(device) => {
-            (push_owned_normalize_arena(&mut arena, &mut arena_len, b"\\\\.\\").is_some()
-              && push_owned_normalize_arena(&mut arena, &mut arena_len, device.as_encoded_bytes())
-                .is_some())
-            .then_some((None, true))
-          }
-          std::path::Prefix::UNC(server, share) => {
-            (push_owned_normalize_arena(&mut arena, &mut arena_len, b"\\\\").is_some()
-              && push_owned_normalize_arena(&mut arena, &mut arena_len, server.as_encoded_bytes())
-                .is_some()
-              && push_owned_normalize_arena(&mut arena, &mut arena_len, b"\\").is_some()
-              && push_owned_normalize_arena(&mut arena, &mut arena_len, share.as_encoded_bytes())
-                .is_some())
-            .then_some((Some(b'\\'), false))
-          }
-          std::path::Prefix::Disk(drive) => {
-            let drive = [drive_spelling.unwrap_or(drive)];
-            (push_owned_normalize_arena(&mut arena, &mut arena_len, &drive).is_some()
-              && push_owned_normalize_arena(&mut arena, &mut arena_len, b":").is_some())
-            .then_some((Some(b'.'), false))
-          }
-          std::path::Prefix::Verbatim(_) | std::path::Prefix::VerbatimUNC(_, _) => {
-            push_owned_normalize_arena(&mut arena, &mut arena_len, p.as_os_str().as_encoded_bytes())
-              .map(|_| (None, true))
-          }
-        };
-        let Some((suffix, optional_root)) = prefix_shape else {
-          fallback_to_inner = true;
-          break;
-        };
-        prefix_only_suffix = suffix;
-        prefix_root_is_optional = optional_root;
-        prefix_range = Some((start as u16, arena_len as u16));
-      }
+      Component::Prefix(_) => unreachable!("Windows uses the encoded arena path"),
       #[cfg(not(target_family = "windows"))]
       Component::Prefix(_) => unreachable!("prefix components only exist on Windows"),
       Component::RootDir => {
@@ -747,22 +859,162 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
     }
   }
 
-  // SAFETY: `OsString::from_encoded_bytes_unchecked` requires bytes that are a
-  // mixture of validated UTF-8 and `OsStr::as_encoded_bytes` from this Rust
-  // version/target, split only at non-empty UTF-8 boundaries.
-  //
-  // `buf` satisfies that: every non-ASCII sequence is copied from
-  // `component.as_os_str().as_encoded_bytes()` (or Windows prefix
-  // server/share/device encodings of the same kind); the only invented bytes
-  // are ASCII (`MAIN_SEPARATOR`, `.`, `..`, and fixed ASCII prefix spellings
-  // such as `\\?\` / `\\.\`). Arena ranges cover whole source slices, and no
-  // serialized encoded-byte buffer is accepted directly.
-  //
-  // Windows also requires that raw WTF-8 concatenation not create a
-  // lead-surrogate/trail-surrogate pair across chunk boundaries. Every boundary
-  // between chunks that can contain surrogates has an ASCII separator. The only
-  // prefix/component joins without one are disk prefixes, which end in ASCII `:`.
-  PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) })
+  PathBuf::from(OsString::from_vec(buf))
+}
+
+#[cfg(not(unix))]
+fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) -> PathBuf {
+  with_encoded_arena(|arena| normalize_owned_path_buf_in_arena(path, trailing, arena))
+}
+
+#[cfg(not(unix))]
+fn normalize_owned_path_buf_in_arena<'id>(
+  path: PathBuf,
+  trailing: TrailingSeparator,
+  mut arena: EncodedArena<'id, OWNED_NORMALIZE_STACK_ARENA>,
+) -> PathBuf {
+  let preserve_trailing = trailing == TrailingSeparator::Preserve && has_trailing_separator(&path);
+  #[cfg(target_family = "windows")]
+  let original_len = path.as_os_str().len();
+  #[cfg(target_family = "windows")]
+  let drive_spelling = windows_drive_spelling(&path);
+
+  let mut stack: [Option<EncodedFragment<'id>>; OWNED_NORMALIZE_COMPONENT_STACK] =
+    [None; OWNED_NORMALIZE_COMPONENT_STACK];
+  let mut stack_len = 0usize;
+  let mut has_root = false;
+  let mut leading_parents = 0usize;
+
+  #[cfg(target_family = "windows")]
+  let mut prefix_plan: Option<WindowsPrefixPlan<'id>> = None;
+
+  // Do not move `path` while `components()` borrows it. Overflow of the stack
+  // arena or component stack sets a flag and breaks; the owned fallback runs
+  // only after the iterator is dropped.
+  let mut fallback_to_inner = false;
+  for component in path.components() {
+    match component {
+      #[cfg(target_family = "windows")]
+      Component::Prefix(p) => {
+        let Some(plan) = windows_prefix_plan(&mut arena, p, drive_spelling) else {
+          fallback_to_inner = true;
+          break;
+        };
+        prefix_plan = Some(plan);
+      }
+      #[cfg(not(target_family = "windows"))]
+      Component::Prefix(_) => unreachable!("prefix components only exist on Windows"),
+      Component::RootDir => {
+        has_root = true;
+        stack_len = 0;
+        leading_parents = 0;
+      }
+      Component::CurDir => {}
+      Component::ParentDir => {
+        if stack_len > 0 {
+          stack_len -= 1;
+        } else if !has_root {
+          leading_parents += 1;
+        }
+      }
+      Component::Normal(normal) => {
+        if stack_len >= stack.len() {
+          fallback_to_inner = true;
+          break;
+        }
+        let Some(fragment) = arena.store_os_str(normal) else {
+          fallback_to_inner = true;
+          break;
+        };
+        stack[stack_len] = Some(fragment);
+        stack_len += 1;
+      }
+    }
+  }
+  if fallback_to_inner {
+    return normalize_owned_path_buf_via_inner(path, trailing);
+  }
+
+  let mut output = path.into_os_string();
+  output.clear();
+
+  #[cfg(target_family = "windows")]
+  let prefix_len = {
+    if let Some(plan) = prefix_plan {
+      plan.write_to(&arena, &mut output);
+    }
+    output.len()
+  };
+
+  if has_root {
+    #[cfg(target_family = "windows")]
+    {
+      let optional_root = prefix_plan.is_some_and(WindowsPrefixPlan::root_is_optional);
+      let prefix_only_input = optional_root && prefix_len == original_len;
+      let collapse_to_prefix =
+        optional_root && stack_len == 0 && leading_parents == 0 && !preserve_trailing;
+      if !prefix_only_input && !collapse_to_prefix {
+        output.push(std::path::MAIN_SEPARATOR_STR);
+      }
+    }
+    #[cfg(not(target_family = "windows"))]
+    {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+  }
+
+  #[cfg(target_family = "windows")]
+  let needs_dot_prefix = prefix_plan.is_none()
+    && !has_root
+    && leading_parents == 0
+    && stack_len > 0
+    && stack[0].is_some_and(|fragment| !arena.is_standalone_windows_relative(fragment));
+  #[cfg(target_family = "windows")]
+  if needs_dot_prefix {
+    output.push(".");
+    output.push(std::path::MAIN_SEPARATOR_STR);
+  }
+
+  let mut need_sep = false;
+  for _ in 0..leading_parents {
+    if need_sep {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+    output.push("..");
+    need_sep = true;
+  }
+  for fragment in stack.iter().take(stack_len) {
+    if need_sep {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+    arena.push_to(&mut output, fragment.expect("initialized component fragment"));
+    need_sep = true;
+  }
+
+  if output.is_empty() {
+    if preserve_trailing {
+      output.push(".");
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    } else {
+      output.push(".");
+    }
+  } else {
+    #[cfg(target_family = "windows")]
+    if output.len() == prefix_len
+      && prefix_len > 0
+      && let Some(suffix) = prefix_plan.and_then(WindowsPrefixPlan::prefix_only_suffix)
+    {
+      output.push(suffix);
+    }
+
+    if preserve_trailing
+      && output.as_encoded_bytes().last() != Some(&(std::path::MAIN_SEPARATOR as u8))
+    {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+  }
+
+  PathBuf::from(output)
 }
 
 pub(crate) fn normalize_owned_path_buf(path: PathBuf) -> PathBuf {
@@ -1554,6 +1806,7 @@ fn leading_parent_path_is_normalized(bytes: &[u8], separator: u8, preserve_trail
 }
 
 #[inline]
+#[cfg(unix)]
 fn normalize_inner<'a>(
   mut components: Peekable<impl Iterator<Item = Component<'a>>>,
   hint_cap: usize,
@@ -1711,11 +1964,298 @@ fn normalize_inner<'a>(
     buf.push(sep_byte);
   }
 
-  // SAFETY: same contract as `normalize_owned_path_buf_reusing` above.
-  // `buf` is only extended with `Component`/`OsStr` `as_encoded_bytes()` slices
-  // and ASCII separators / `.` / fixed ASCII Windows prefix bytes — never
-  // arbitrary non-UTF-8 invented by this function.
-  Cow::Owned(PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) }))
+  use std::os::unix::ffi::OsStringExt;
+  Cow::Owned(PathBuf::from(OsString::from_vec(buf)))
+}
+
+#[cfg(not(unix))]
+#[inline]
+fn normalize_inner<'a>(
+  mut components: Peekable<impl Iterator<Item = Component<'a>> + Clone>,
+  hint_cap: usize,
+  preserve_trailing: bool,
+  _drive_spelling: Option<u8>,
+) -> Cow<'a, Path> {
+  let original_components = components.clone();
+
+  #[cfg(target_family = "windows")]
+  let prefix_plan = if let Some(Component::Prefix(prefix)) = components.peek().copied() {
+    let plan = borrowed_windows_prefix_plan(prefix, _drive_spelling);
+    components.next();
+    Some(plan)
+  } else {
+    None
+  };
+
+  let has_root = if matches!(components.peek(), Some(Component::RootDir)) {
+    components.next();
+    true
+  } else {
+    false
+  };
+
+  let mut stack: SmallVec<[&'a OsStr; NATIVE_NORMALIZE_COMPONENT_STACK]> = SmallVec::new();
+  let mut leading_parents = 0usize;
+  for component in components {
+    match component {
+      Component::Prefix(prefix) => unreachable!("Unexpected prefix for {:?}", prefix),
+      Component::RootDir => unreachable!("Unexpected RootDir after initial position"),
+      Component::CurDir => {}
+      Component::ParentDir => {
+        if stack.pop().is_none() && !has_root {
+          leading_parents += 1;
+        }
+      }
+      Component::Normal(normal) => {
+        if stack.len() == NATIVE_NORMALIZE_COMPONENT_STACK {
+          return normalize_inner_deep(
+            original_components,
+            hint_cap,
+            preserve_trailing,
+            _drive_spelling,
+          );
+        }
+        stack.push(normal);
+      }
+    }
+  }
+
+  let mut output = OsString::with_capacity(hint_cap);
+  #[cfg(target_family = "windows")]
+  let prefix_len = {
+    if let Some(plan) = prefix_plan {
+      plan.write_to(&mut output);
+    }
+    output.len()
+  };
+
+  if has_root {
+    #[cfg(target_family = "windows")]
+    {
+      let optional_root = prefix_plan.is_some_and(BorrowedWindowsPrefixPlan::root_is_optional);
+      let prefix_only_input = optional_root && prefix_len == hint_cap;
+      let collapse_to_prefix =
+        optional_root && stack.is_empty() && leading_parents == 0 && !preserve_trailing;
+      if !prefix_only_input && !collapse_to_prefix {
+        output.push(std::path::MAIN_SEPARATOR_STR);
+      }
+    }
+    #[cfg(not(target_family = "windows"))]
+    {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+  }
+
+  #[cfg(target_family = "windows")]
+  if prefix_plan.is_none()
+    && !has_root
+    && leading_parents == 0
+    && stack.first().is_some_and(|normal| {
+      !windows_standalone_relative_bytes_are_representable(normal.as_encoded_bytes())
+    })
+  {
+    output.push(".");
+    output.push(std::path::MAIN_SEPARATOR_STR);
+  }
+
+  let mut need_sep = false;
+  for _ in 0..leading_parents {
+    if need_sep {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+    output.push("..");
+    need_sep = true;
+  }
+  for normal in stack {
+    if need_sep {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+    output.push(normal);
+    need_sep = true;
+  }
+
+  if output.is_empty() {
+    if preserve_trailing {
+      output.push(".");
+      output.push(std::path::MAIN_SEPARATOR_STR);
+      return Cow::Owned(PathBuf::from(output));
+    }
+    return Cow::Borrowed(Path::new("."));
+  }
+
+  #[cfg(target_family = "windows")]
+  if output.len() == prefix_len
+    && prefix_len > 0
+    && let Some(suffix) = prefix_plan.and_then(BorrowedWindowsPrefixPlan::prefix_only_suffix)
+  {
+    output.push(suffix);
+  }
+
+  if preserve_trailing
+    && output.as_encoded_bytes().last() != Some(&(std::path::MAIN_SEPARATOR as u8))
+  {
+    output.push(std::path::MAIN_SEPARATOR_STR);
+  }
+
+  Cow::Owned(PathBuf::from(output))
+}
+
+#[cfg(not(unix))]
+fn native_normal_survives<'a>(components: impl Iterator<Item = Component<'a>>) -> bool {
+  let mut later_depth = 0usize;
+  for component in components {
+    match component {
+      Component::CurDir => {}
+      Component::Normal(_) => later_depth += 1,
+      Component::ParentDir => {
+        if later_depth == 0 {
+          return false;
+        }
+        later_depth -= 1;
+      }
+      Component::Prefix(prefix) => unreachable!("Unexpected prefix for {:?}", prefix),
+      Component::RootDir => unreachable!("Unexpected RootDir after initial position"),
+    }
+  }
+  true
+}
+
+// A path with more than 32 live native components would make `SmallVec` add a
+// second allocation. Re-scan the clonable `Components` iterator instead. This
+// path is deliberately cold and quadratic, but retains the historical single
+// output allocation for arbitrarily deep paths.
+#[cfg(not(unix))]
+#[cold]
+fn normalize_inner_deep<'a>(
+  mut components: Peekable<impl Iterator<Item = Component<'a>> + Clone>,
+  hint_cap: usize,
+  preserve_trailing: bool,
+  _drive_spelling: Option<u8>,
+) -> Cow<'a, Path> {
+  #[cfg(target_family = "windows")]
+  let prefix_plan = if let Some(Component::Prefix(prefix)) = components.peek().copied() {
+    let plan = borrowed_windows_prefix_plan(prefix, _drive_spelling);
+    components.next();
+    Some(plan)
+  } else {
+    None
+  };
+
+  let has_root = if matches!(components.peek(), Some(Component::RootDir)) {
+    components.next();
+    true
+  } else {
+    false
+  };
+  let body = components;
+
+  let mut surviving_depth = 0usize;
+  let mut leading_parents = 0usize;
+  for component in body.clone() {
+    match component {
+      Component::CurDir => {}
+      Component::Normal(_) => surviving_depth += 1,
+      Component::ParentDir => {
+        if surviving_depth > 0 {
+          surviving_depth -= 1;
+        } else if !has_root {
+          leading_parents += 1;
+        }
+      }
+      Component::Prefix(prefix) => unreachable!("Unexpected prefix for {:?}", prefix),
+      Component::RootDir => unreachable!("Unexpected RootDir after initial position"),
+    }
+  }
+
+  let mut output = OsString::with_capacity(hint_cap);
+  #[cfg(target_family = "windows")]
+  let prefix_len = {
+    if let Some(plan) = prefix_plan {
+      plan.write_to(&mut output);
+    }
+    output.len()
+  };
+
+  if has_root {
+    #[cfg(target_family = "windows")]
+    {
+      let optional_root = prefix_plan.is_some_and(BorrowedWindowsPrefixPlan::root_is_optional);
+      let prefix_only_input = optional_root && prefix_len == hint_cap;
+      let collapse_to_prefix =
+        optional_root && surviving_depth == 0 && leading_parents == 0 && !preserve_trailing;
+      if !prefix_only_input && !collapse_to_prefix {
+        output.push(std::path::MAIN_SEPARATOR_STR);
+      }
+    }
+    #[cfg(not(target_family = "windows"))]
+    {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+  }
+
+  let mut need_sep = false;
+  for _ in 0..leading_parents {
+    if need_sep {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+    output.push("..");
+    need_sep = true;
+  }
+
+  let mut remaining = body;
+  let mut wrote_normal = false;
+  while let Some(component) = remaining.next() {
+    let Component::Normal(normal) = component else {
+      continue;
+    };
+    if !native_normal_survives(remaining.clone()) {
+      continue;
+    }
+
+    #[cfg(target_family = "windows")]
+    if !wrote_normal
+      && prefix_plan.is_none()
+      && !has_root
+      && leading_parents == 0
+      && !windows_standalone_relative_bytes_are_representable(normal.as_encoded_bytes())
+    {
+      output.push(".");
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+
+    if need_sep {
+      output.push(std::path::MAIN_SEPARATOR_STR);
+    }
+    output.push(normal);
+    need_sep = true;
+    wrote_normal = true;
+  }
+  debug_assert_eq!(wrote_normal, surviving_depth > 0);
+
+  if output.is_empty() {
+    if preserve_trailing {
+      output.push(".");
+      output.push(std::path::MAIN_SEPARATOR_STR);
+      return Cow::Owned(PathBuf::from(output));
+    }
+    return Cow::Borrowed(Path::new("."));
+  }
+
+  #[cfg(target_family = "windows")]
+  if output.len() == prefix_len
+    && prefix_len > 0
+    && let Some(suffix) = prefix_plan.and_then(BorrowedWindowsPrefixPlan::prefix_only_suffix)
+  {
+    output.push(suffix);
+  }
+
+  if preserve_trailing
+    && output.as_encoded_bytes().last() != Some(&(std::path::MAIN_SEPARATOR as u8))
+  {
+    output.push(std::path::MAIN_SEPARATOR_STR);
+  }
+
+  Cow::Owned(PathBuf::from(output))
 }
 
 impl SugarPath for str {
@@ -1921,6 +2461,7 @@ fn common_prefix_len_scalar(left: &[u8], right: &[u8]) -> usize {
 }
 
 #[cfg(all(not(target_family = "windows"), target_arch = "aarch64", target_feature = "neon"))]
+#[allow(unsafe_code)]
 #[inline]
 fn common_prefix_len_neon(left: &[u8], right: &[u8]) -> usize {
   use std::arch::aarch64::{vceqq_u8, vld1q_u8, vminvq_u8, vst1q_u8};
@@ -1938,7 +2479,8 @@ fn common_prefix_len_neon(left: &[u8], right: &[u8]) -> usize {
       let right_chunk = vld1q_u8(right.as_ptr().add(offset));
       vceqq_u8(left_chunk, right_chunk)
     };
-    // Equality lanes are all ones for a match and all zeroes for a mismatch.
+    // SAFETY: `equal` is a fully initialized NEON vector value. Equality lanes
+    // are all ones for a match and all zeroes for a mismatch.
     if unsafe { vminvq_u8(equal) } != u8::MAX {
       let mut equal_bytes = [0; 16];
       // SAFETY: `equal_bytes` has exactly enough initialized space for one
@@ -2214,6 +2756,7 @@ mod relative_str_tests {
 /// Replace `\` with `/` using memchr SIMD search. Returns the input unchanged
 /// (zero allocation) when no backslashes are present.
 #[cfg(target_family = "windows")]
+#[allow(unsafe_code)]
 fn normalize_backslash_cow(s: &str) -> Cow<'_, str> {
   let bytes = s.as_bytes();
   let Some(first) = memchr(b'\\', bytes) else {

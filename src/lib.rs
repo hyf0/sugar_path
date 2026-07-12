@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+#![deny(clippy::undocumented_unsafe_blocks)]
 #![warn(missing_docs, rustdoc::broken_intra_doc_links)]
 //! Host-native lexical path manipulation as extension methods on standard Rust types.
 //!
@@ -95,6 +97,9 @@
 //! the [changelog](https://github.com/hyf0/sugar_path/blob/main/CHANGELOG.md)
 //! for release and migration information.
 
+#[cfg(not(unix))]
+#[allow(unsafe_code)]
+mod encoded_arena;
 mod impl_sugar_path;
 mod sugar_path;
 mod sugar_path_buf;
