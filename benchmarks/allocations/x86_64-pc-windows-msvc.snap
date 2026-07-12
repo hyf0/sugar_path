@@ -27,6 +27,8 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / owned collapsing input via owned receiver -> PathBuf | 0 | 0 | 0 |
 | normalize / owned invalid input via borrowed receiver -> PathBuf | 1 | 0 | 0 |
 | normalize / owned invalid input via owned receiver -> PathBuf | 0 | 0 | 0 |
+| normalize / owned dirty 24-component boundary via owned receiver -> PathBuf | 0 | 0 | 0 |
+| normalize / owned dirty 25-component fallback via owned receiver -> PathBuf | 1 | 0 | 0 |
 | pipeline / dirty join via borrowed receiver -> PathBuf | 2 | 0 | 2 |
 | pipeline / dirty join via owned receiver -> PathBuf | 1 | 0 | 2 |
 | pipeline / dirty join via borrowed receiver -> String | 3 | 0 | 2 |
@@ -38,11 +40,15 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | Windows / absolute mixed separators -> normalized path | 1 | 0 | 0 |
 | Windows / canonical ordinary UNC -> normalized path | 1 | 0 | 0 |
 | Windows / canonical verbatim UNC -> normalized path | 1 | 0 | 0 |
+| Windows / long-prefix 24-component UNC boundary via owned receiver -> PathBuf | 0 | 0 | 0 |
+| Windows / long-prefix 25-component UNC fallback via owned receiver -> PathBuf | 1 | 0 | 0 |
 | absolutize / clean absolute input -> absolute path | 0 | 0 | 0 |
 | absolutize_with / absolute input + borrowed cwd -> absolute path | 0 | 0 | 0 |
 | absolutize_with / relative input + borrowed cwd -> absolute path | 1 | 0 | 1 |
 | absolutize_with / relative input + owned cwd -> absolute path (setup excluded) | 0 | 0 | 1 |
 | absolutize_with / clean relative input + owned cwd -> absolute path (setup excluded) | 0 | 0 | 1 |
+| absolutize_with / empty input + exact owned root cwd -> absolute path (setup excluded) | 0 | 0 | 0 |
+| absolutize_with / relative input + exact trailing-separator owned cwd -> absolute path (setup excluded) | 0 | 0 | 0 |
 | relative / canonical native descendant -> natural result | 0 | 0 | 0 |
 | relative / canonical native descendant -> PathBuf | 1 | 0 | 0 |
 | relative / relative inputs -> relative path | 1 | 0 | 0 |
@@ -105,17 +111,19 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / owned clean input via borrowed receiver -> PathBuf | 58 | 0 |
 | normalize / owned clean input via owned receiver -> PathBuf | 0 | 0 |
 | normalize / owned dirty input via borrowed receiver -> PathBuf | 58 | 0 |
-| normalize / owned dirty input via owned receiver -> PathBuf | 58 | 0 |
+| normalize / owned dirty input via owned receiver -> PathBuf | 0 | 0 |
 | normalize / owned dot input via borrowed receiver -> PathBuf | 1 | 0 |
 | normalize / owned dot input via owned receiver -> PathBuf | 0 | 0 |
 | normalize / owned collapsing input via borrowed receiver -> PathBuf | 7 | 0 |
-| normalize / owned collapsing input via owned receiver -> PathBuf | 6 | 0 |
+| normalize / owned collapsing input via owned receiver -> PathBuf | 0 | 0 |
 | normalize / owned invalid input via borrowed receiver -> PathBuf | 70 | 0 |
 | normalize / owned invalid input via owned receiver -> PathBuf | 0 | 0 |
+| normalize / owned dirty 24-component boundary via owned receiver -> PathBuf | 0 | 0 |
+| normalize / owned dirty 25-component fallback via owned receiver -> PathBuf | 51 | 0 |
 | pipeline / dirty join via borrowed receiver -> PathBuf | 100 | 126 |
-| pipeline / dirty join via owned receiver -> PathBuf | 100 | 126 |
+| pipeline / dirty join via owned receiver -> PathBuf | 21 | 126 |
 | pipeline / dirty join via borrowed receiver -> String | 170 | 126 |
-| pipeline / dirty join via owned receiver -> String | 100 | 126 |
+| pipeline / dirty join via owned receiver -> String | 21 | 126 |
 | pipeline / clean join via borrowed receiver -> PathBuf | 91 | 126 |
 | pipeline / clean join via owned receiver -> PathBuf | 21 | 126 |
 | pipeline / clean join via borrowed receiver -> String | 91 | 126 |
@@ -123,11 +131,15 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | Windows / absolute mixed separators -> normalized path | 60 | 0 |
 | Windows / canonical ordinary UNC -> normalized path | 36 | 0 |
 | Windows / canonical verbatim UNC -> normalized path | 42 | 0 |
+| Windows / long-prefix 24-component UNC boundary via owned receiver -> PathBuf | 0 | 0 |
+| Windows / long-prefix 25-component UNC fallback via owned receiver -> PathBuf | 117 | 0 |
 | absolutize / clean absolute input -> absolute path | 0 | 0 |
 | absolutize_with / absolute input + borrowed cwd -> absolute path | 0 | 0 |
-| absolutize_with / relative input + borrowed cwd -> absolute path | 107 | 74 |
-| absolutize_with / relative input + owned cwd -> absolute path (setup excluded) | 70 | 74 |
+| absolutize_with / relative input + borrowed cwd -> absolute path | 37 | 74 |
+| absolutize_with / relative input + owned cwd -> absolute path (setup excluded) | 0 | 74 |
 | absolutize_with / clean relative input + owned cwd -> absolute path (setup excluded) | 0 | 74 |
+| absolutize_with / empty input + exact owned root cwd -> absolute path (setup excluded) | 0 | 0 |
+| absolutize_with / relative input + exact trailing-separator owned cwd -> absolute path (setup excluded) | 0 | 0 |
 | relative / canonical native descendant -> natural result | 0 | 0 |
 | relative / canonical native descendant -> PathBuf | 32 | 0 |
 | relative / relative inputs -> relative path | 31 | 0 |
