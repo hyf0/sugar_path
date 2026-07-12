@@ -274,6 +274,10 @@ const SCENARIOS: &[Scenario] = &[
     run: normalize_owned_dirty_depth_25_consuming,
   },
   Scenario {
+    name: "normalize / owned dirty 33-component deep fallback via owned receiver -> PathBuf",
+    run: normalize_owned_dirty_depth_33_consuming,
+  },
+  Scenario {
     name: "pipeline / dirty join via borrowed receiver -> PathBuf",
     run: join_normalize_owned,
   },
@@ -880,6 +884,10 @@ fn normalize_owned_dirty_depth_24_consuming(mode: RunMode) -> AllocationStats {
 
 fn normalize_owned_dirty_depth_25_consuming(mode: RunMode) -> AllocationStats {
   normalize_owned_dirty_depth_consuming(mode, 25)
+}
+
+fn normalize_owned_dirty_depth_33_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_dirty_depth_consuming(mode, 33)
 }
 
 fn join_normalize_owned(mode: RunMode) -> AllocationStats {

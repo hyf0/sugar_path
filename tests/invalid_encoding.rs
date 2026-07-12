@@ -13,6 +13,7 @@ mod unix {
   };
 
   use super::*;
+  use sugar_path::SugarPathBuf;
 
   fn path(bytes: &[u8]) -> PathBuf {
     PathBuf::from(OsString::from_vec(bytes.to_vec()))
@@ -29,11 +30,21 @@ mod unix {
   }
 
   fn assert_normalizes_exactly_and_is_idempotent(input: &[u8], expected: &[u8]) {
-    let once = path(input).normalize().into_owned();
-    assert_bytes(&once, expected);
+    let source = path(input);
+    let borrowed = source.normalize().into_owned();
+    let identity = (source.as_os_str().as_bytes().as_ptr(), source.capacity());
+    let owned = source.into_normalized();
+    assert_eq!(
+      (owned.as_os_str().as_bytes().as_ptr(), owned.capacity()),
+      identity,
+      "owned normalization did not reuse its input buffer",
+    );
 
-    let twice = once.normalize().into_owned();
-    assert_bytes(&twice, expected);
+    for once in [borrowed, owned] {
+      assert_bytes(&once, expected);
+      let twice = once.normalize().into_owned();
+      assert_bytes(&twice, expected);
+    }
   }
 
   #[test]
@@ -59,6 +70,23 @@ mod unix {
       panic!("dirty invalid encoding should rebuild");
     };
     assert_bytes(&normalized, b"/workspace/segment-\x80/file");
+  }
+
+  #[test]
+  fn normalize_preserves_arbitrary_bytes_at_component_and_arena_boundaries() {
+    assert_normalizes_exactly_and_is_idempotent(
+      b"\xff-first-\x80/./\xc0-second-\0/drop-\xed\xa0\x80/../tail/",
+      b"\xff-first-\x80/\xc0-second-\0/tail/",
+    );
+
+    let mut input = b"./".to_vec();
+    input.resize(511, b'x');
+    input.push(0xff);
+    assert_eq!(input.len(), 512);
+
+    let mut expected = vec![b'x'; 509];
+    expected.push(0xff);
+    assert_normalizes_exactly_and_is_idempotent(&input, &expected);
   }
 
   #[test]
@@ -149,9 +177,27 @@ mod windows {
   };
 
   use super::*;
+  use sugar_path::SugarPathBuf;
 
   const LONE_HIGH_SURROGATE: u16 = 0xd800;
   const DISTINCT_HIGH_SURROGATE: u16 = 0xd801;
+
+  #[derive(Clone, Copy)]
+  enum WidePart<'a> {
+    Text(&'a str),
+    Unit(u16),
+  }
+
+  #[derive(Clone, Copy, Debug)]
+  enum PrefixClass {
+    None,
+    Disk,
+    VerbatimDisk,
+    Unc,
+    VerbatimUnc,
+    DeviceNs,
+    Verbatim,
+  }
 
   fn wide_with_invalid(prefix: &str, suffix: &str) -> Vec<u16> {
     wide_with_invalid_unit(prefix, LONE_HIGH_SURROGATE, suffix)
@@ -166,6 +212,77 @@ mod windows {
 
   fn path(wide: &[u16]) -> PathBuf {
     PathBuf::from(OsString::from_wide(wide))
+  }
+
+  fn wide(parts: &[WidePart<'_>]) -> Vec<u16> {
+    let mut result = Vec::new();
+    for part in parts {
+      match *part {
+        WidePart::Text(text) => result.extend(text.encode_utf16()),
+        WidePart::Unit(unit) => result.push(unit),
+      }
+    }
+    result
+  }
+
+  fn assert_prefix_class(name: &str, path: &Path, expected: PrefixClass) {
+    use std::path::{Component, Prefix};
+
+    let actual = match path.components().next() {
+      Some(Component::Prefix(prefix)) => Some(prefix.kind()),
+      _ => None,
+    };
+    let matches = matches!(
+      (expected, actual),
+      (PrefixClass::None, None)
+        | (PrefixClass::Disk, Some(Prefix::Disk(_)))
+        | (PrefixClass::VerbatimDisk, Some(Prefix::VerbatimDisk(_)))
+        | (PrefixClass::Unc, Some(Prefix::UNC(_, _)))
+        | (PrefixClass::VerbatimUnc, Some(Prefix::VerbatimUNC(_, _)))
+        | (PrefixClass::DeviceNs, Some(Prefix::DeviceNS(_)))
+        | (PrefixClass::Verbatim, Some(Prefix::Verbatim(_)))
+    );
+    assert!(matches, "{name}: fixture parsed as {actual:?}");
+  }
+
+  fn assert_wide_case(name: &str, stage: &str, actual: &Path, expected: &[u16]) {
+    assert_eq!(actual.as_os_str().encode_wide().collect::<Vec<_>>(), expected, "{name}: {stage}",);
+  }
+
+  fn assert_normalization_case(
+    name: &str,
+    prefix: PrefixClass,
+    input: &[WidePart<'_>],
+    expected: &[WidePart<'_>],
+  ) {
+    let source = path(&wide(input));
+    let expected = wide(expected);
+
+    assert_prefix_class(name, &source, prefix);
+    assert!(source.to_str().is_none(), "{name}: fixture must contain unpaired surrogates");
+    assert!(source.as_os_str().len() <= 512, "{name}: fixture must use the arena path");
+
+    let borrowed = source.normalize().into_owned();
+    let owned_input = source.clone();
+    let identity = (owned_input.as_os_str().as_encoded_bytes().as_ptr(), owned_input.capacity());
+    let owned = owned_input.into_normalized();
+    assert_eq!(
+      (owned.as_os_str().as_encoded_bytes().as_ptr(), owned.capacity()),
+      identity,
+      "{name}: owned normalization did not reuse its input buffer",
+    );
+
+    for (api, once) in [("normalize", borrowed), ("into_normalized", owned)] {
+      assert_wide_case(name, api, &once, &expected);
+      assert!(once.to_str().is_none(), "{name}: {api} paired or lost a surrogate");
+
+      let twice_borrowed = once.normalize();
+      assert_wide_case(name, "idempotent normalize", twice_borrowed.as_ref(), &expected);
+      drop(twice_borrowed);
+
+      let twice_owned = once.into_normalized();
+      assert_wide_case(name, "idempotent into_normalized", &twice_owned, &expected);
+    }
   }
 
   fn invalid_path(prefix: &str, suffix: &str) -> PathBuf {
@@ -234,6 +351,163 @@ mod windows {
       panic!("dirty invalid encoding should rebuild");
     };
     assert_wide(&normalized, &wide_with_invalid(r"C:\workspace\segment-", r"\file"));
+  }
+
+  #[test]
+  fn normalization_preserves_surrogates_at_every_windows_chunk_boundary() {
+    use WidePart::{Text as T, Unit as U};
+
+    const HIGH: u16 = 0xd800;
+    const LOW: u16 = 0xdc00;
+
+    assert_normalization_case(
+      "relative normal components",
+      PrefixClass::None,
+      &[U(LOW), T("first"), U(HIGH), T(r"\.\"), U(LOW), T("second"), U(HIGH), T(r"\drop\..\tail")],
+      &[U(LOW), T("first"), U(HIGH), T(r"\"), U(LOW), T("second"), U(HIGH), T(r"\tail")],
+    );
+
+    assert_normalization_case(
+      "drive-relative disk",
+      PrefixClass::Disk,
+      &[T("c:"), U(LOW), T("disk"), U(HIGH), T(r"\.\tail")],
+      &[T("c:"), U(LOW), T("disk"), U(HIGH), T(r"\tail")],
+    );
+
+    assert_normalization_case(
+      "verbatim disk",
+      PrefixClass::VerbatimDisk,
+      &[T(r"\\?\c:\"), U(LOW), T("disk"), U(HIGH), T(r"\.\tail")],
+      &[T(r"\\?\c:\"), U(LOW), T("disk"), U(HIGH), T(r"\tail")],
+    );
+
+    assert_normalization_case(
+      "UNC fields",
+      PrefixClass::Unc,
+      &[
+        T(r"\\"),
+        U(LOW),
+        T("server"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("share"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("leaf"),
+        U(HIGH),
+        T(r"\.\tail"),
+      ],
+      &[
+        T(r"\\"),
+        U(LOW),
+        T("server"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("share"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("leaf"),
+        U(HIGH),
+        T(r"\tail"),
+      ],
+    );
+
+    assert_normalization_case(
+      "verbatim UNC fields",
+      PrefixClass::VerbatimUnc,
+      &[
+        T(r"\\?\UNC\"),
+        U(LOW),
+        T("server"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("share"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("leaf"),
+        U(HIGH),
+        T(r"\.\tail"),
+      ],
+      &[
+        T(r"\\?\UNC\"),
+        U(LOW),
+        T("server"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("share"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("leaf"),
+        U(HIGH),
+        T(r"\tail"),
+      ],
+    );
+
+    assert_normalization_case(
+      "device namespace field",
+      PrefixClass::DeviceNs,
+      &[T(r"\\.\"), U(LOW), T("PIPE"), U(HIGH), T(r"\"), U(LOW), T("leaf"), U(HIGH), T(r"\.\tail")],
+      &[T(r"\\.\"), U(LOW), T("PIPE"), U(HIGH), T(r"\"), U(LOW), T("leaf"), U(HIGH), T(r"\tail")],
+    );
+
+    assert_normalization_case(
+      "generic verbatim field",
+      PrefixClass::Verbatim,
+      &[
+        T(r"\\?\"),
+        U(LOW),
+        T("Volume"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("leaf"),
+        U(HIGH),
+        T(r"\.\tail"),
+      ],
+      &[T(r"\\?\"), U(LOW), T("Volume"), U(HIGH), T(r"\"), U(LOW), T("leaf"), U(HIGH), T(r"\tail")],
+    );
+
+    assert_normalization_case(
+      "invalid prefix-only collapse",
+      PrefixClass::Verbatim,
+      &[
+        T(r"\\?\"),
+        U(LOW),
+        T("namespace"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("gone"),
+        U(HIGH),
+        T(r"\.."),
+      ],
+      &[T(r"\\?\"), U(LOW), T("namespace"), U(HIGH)],
+    );
+
+    assert_normalization_case(
+      "invalid prefix-only trailing separator",
+      PrefixClass::Verbatim,
+      &[
+        T(r"\\?\"),
+        U(LOW),
+        T("namespace"),
+        U(HIGH),
+        T(r"\"),
+        U(LOW),
+        T("gone"),
+        U(HIGH),
+        T(r"\..\"),
+      ],
+      &[T(r"\\?\"), U(LOW), T("namespace"), U(HIGH), T(r"\")],
+    );
   }
 
   #[test]

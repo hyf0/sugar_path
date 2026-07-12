@@ -87,6 +87,8 @@ fn into_normalized_matches_borrowed_api_for_dirty_paths() {
     r"C:\a\.\b\..\c\\",
     r"C:\..\file",
     r"dir\..\C:foo",
+    r"dir\..\C:foo\..",
+    r"dir\..\C:foo\..\",
     r"C:foo\.\bar",
     r"\\?\c:\foo\..",
     r"\\.\PIPE\foo\..",
@@ -99,6 +101,27 @@ fn into_normalized_matches_borrowed_api_for_dirty_paths() {
     let path = PathBuf::from(input);
     let expected = path.normalize().into_owned();
     assert_eq!(path.clone().into_normalized().as_os_str(), expected.as_os_str(), "input {input:?}");
+  }
+}
+
+#[cfg(target_family = "windows")]
+#[test]
+fn windows_owned_normalization_keeps_prefix_only_and_collapsed_relative_spellings() {
+  let cases = [
+    (r"dir\..\C:foo\..", "."),
+    (r"dir\..\C:foo\..\", r".\"),
+    (r"c:foo\..", "c:."),
+    (r"c:foo\..\", r"c:.\"),
+  ];
+
+  for (input, expected) in cases {
+    let path = PathBuf::from(input);
+    assert_eq!(path.normalize().as_os_str(), Path::new(expected).as_os_str(), "input {input:?}");
+    assert_eq!(
+      path.into_normalized().as_os_str(),
+      Path::new(expected).as_os_str(),
+      "input {input:?}",
+    );
   }
 }
 
@@ -172,15 +195,22 @@ fn into_normalized_reuses_long_unc_prefixes_without_a_temporary_heap_buffer() {
 
 #[test]
 fn into_normalized_matches_borrowed_api_on_overflow_fallbacks() {
-  // Depth > 24 normals forces the component-stack overflow → normalize_inner path.
+  // Depth > 32 reaches the allocation-free deep replay in the non-Unix
+  // normalizer after the owned 24-component stack has already overflowed.
   let mut deep = PathBuf::new();
-  for i in 0..30 {
+  for i in 0..34 {
     deep.push(format!("level-{i}"));
   }
-  deep.push(".");
+  deep.push("..");
+  deep.push("..");
   deep.push("tail");
-  let expected = deep.normalize().into_owned();
-  assert_eq!(deep.clone().into_normalized().as_os_str(), expected.as_os_str());
+  let mut expected = PathBuf::new();
+  for i in 0..32 {
+    expected.push(format!("level-{i}"));
+  }
+  expected.push("tail");
+  assert_eq!(deep.normalize().as_os_str(), expected.as_os_str());
+  assert_eq!(deep.into_normalized().as_os_str(), expected.as_os_str());
 
   // Encoded length > 512 forces the long-path → normalize_inner path.
   let long_component = "x".repeat(280);
