@@ -574,6 +574,10 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
     Some((start as u16, *arena_len as u16))
   };
 
+  // Do not move `path` while `components()` borrows it. Overflow of the stack
+  // arena or component stack sets a flag and breaks; the owned fallback runs
+  // only after the iterator is dropped.
+  let mut fallback_to_inner = false;
   for component in path.components() {
     match component {
       #[cfg(target_family = "windows")]
@@ -615,7 +619,8 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
           }
         };
         if push_arena(&mut arena, &mut arena_len, &extra).is_none() {
-          return normalize_owned_path_buf_via_inner(path, trailing);
+          fallback_to_inner = true;
+          break;
         }
         prefix_only_suffix = suffix;
         prefix_root_is_optional = optional_root;
@@ -638,15 +643,20 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
       }
       Component::Normal(normal) => {
         if stack_len >= stack.len() {
-          return normalize_owned_path_buf_via_inner(path, trailing);
+          fallback_to_inner = true;
+          break;
         }
         let Some(range) = push_arena(&mut arena, &mut arena_len, normal.as_encoded_bytes()) else {
-          return normalize_owned_path_buf_via_inner(path, trailing);
+          fallback_to_inner = true;
+          break;
         };
         stack[stack_len] = range;
         stack_len += 1;
       }
     }
+  }
+  if fallback_to_inner {
+    return normalize_owned_path_buf_via_inner(path, trailing);
   }
 
   let sep_byte = std::path::MAIN_SEPARATOR as u8;
