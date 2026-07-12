@@ -277,6 +277,21 @@ const SCENARIOS: &[Scenario] = &[
     name: "normalize / owned dirty 33-component deep fallback via owned receiver -> PathBuf",
     run: normalize_owned_dirty_depth_33_consuming,
   },
+  #[cfg(not(unix))]
+  Scenario {
+    name: "normalize / non-Unix dirty 64-component replay boundary via owned receiver -> PathBuf",
+    run: normalize_owned_dirty_depth_64_consuming,
+  },
+  #[cfg(not(unix))]
+  Scenario {
+    name: "normalize / non-Unix dirty 65-component linear spill via owned receiver -> PathBuf",
+    run: normalize_owned_dirty_depth_65_consuming,
+  },
+  #[cfg(not(unix))]
+  Scenario {
+    name: "normalize / non-Unix dirty long 33-component linear spill via owned receiver -> PathBuf",
+    run: normalize_owned_dirty_long_depth_33_consuming,
+  },
   Scenario {
     name: "pipeline / dirty join via borrowed receiver -> PathBuf",
     run: join_normalize_owned,
@@ -888,6 +903,34 @@ fn normalize_owned_dirty_depth_25_consuming(mode: RunMode) -> AllocationStats {
 
 fn normalize_owned_dirty_depth_33_consuming(mode: RunMode) -> AllocationStats {
   normalize_owned_dirty_depth_consuming(mode, 33)
+}
+
+#[cfg(not(unix))]
+fn normalize_owned_dirty_depth_64_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_dirty_depth_consuming(mode, 64)
+}
+
+#[cfg(not(unix))]
+fn normalize_owned_dirty_depth_65_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_dirty_depth_consuming(mode, 65)
+}
+
+#[cfg(not(unix))]
+fn normalize_owned_dirty_long_depth_33_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || {
+      let mut path = PathBuf::with_capacity(1024);
+      for _ in 0..33 {
+        path.push("aaaaaaaaaaaaaaaa");
+      }
+      path.push(".");
+      path
+    },
+    |path| {
+      black_box(black_box(path).into_normalized());
+    },
+  )
 }
 
 fn join_normalize_owned(mode: RunMode) -> AllocationStats {

@@ -224,6 +224,91 @@ fn into_normalized_matches_borrowed_api_on_overflow_fallbacks() {
   assert_eq!(path.clone().into_normalized().as_os_str(), expected.as_os_str());
 }
 
+#[cfg(not(unix))]
+#[test]
+fn native_normalization_stays_correct_beyond_the_bounded_replay() {
+  for depth in [64, 65] {
+    let mut boundary = PathBuf::new();
+    let mut boundary_expected = PathBuf::new();
+    for _ in 0..depth {
+      boundary.push("a");
+      boundary_expected.push("a");
+    }
+    boundary.push(".");
+    assert_eq!(boundary.normalize().as_os_str(), boundary_expected.as_os_str());
+    assert_eq!(boundary.into_normalized().as_os_str(), boundary_expected.as_os_str());
+  }
+
+  let mut long_boundary = PathBuf::new();
+  let mut long_boundary_expected = PathBuf::new();
+  for _ in 0..33 {
+    long_boundary.push("aaaaaaaaaaaaaaaa");
+    long_boundary_expected.push("aaaaaaaaaaaaaaaa");
+  }
+  long_boundary.push(".");
+  assert!(long_boundary.as_os_str().len() > 512);
+  assert_eq!(long_boundary.normalize().as_os_str(), long_boundary_expected.as_os_str());
+  assert_eq!(long_boundary.into_normalized().as_os_str(), long_boundary_expected.as_os_str());
+
+  let mut deep = PathBuf::new();
+  let mut expected = PathBuf::new();
+  for i in 0..128 {
+    let component = format!("level-{i}");
+    deep.push(&component);
+    if i < 64 {
+      expected.push(component);
+    }
+  }
+  for _ in 0..64 {
+    deep.push("..");
+  }
+  deep.push("tail");
+  expected.push("tail");
+  deep.push(".");
+
+  assert_eq!(deep.normalize().as_os_str(), expected.as_os_str());
+  assert_eq!(deep.into_normalized().as_os_str(), expected.as_os_str());
+
+  // Once the component stack spills, returning to exactly 32 live normals
+  // must not select the deep strategy and rescan the full input again.
+  let mut oscillating = PathBuf::new();
+  let mut oscillating_expected = PathBuf::new();
+  for i in 0..32 {
+    let component = format!("base-{i}");
+    oscillating.push(&component);
+    oscillating_expected.push(component);
+  }
+  for _ in 0..256 {
+    oscillating.push("temporary");
+    oscillating.push("..");
+  }
+  oscillating.push("tail");
+  oscillating_expected.push("tail");
+  oscillating.push(".");
+
+  assert_eq!(oscillating.normalize().as_os_str(), oscillating_expected.as_os_str());
+  assert_eq!(oscillating.into_normalized().as_os_str(), oscillating_expected.as_os_str());
+}
+
+#[cfg(target_family = "windows")]
+#[test]
+fn windows_linear_spill_preserves_a_drive_like_first_survivor() {
+  let mut deep = PathBuf::new();
+  for i in 0..65 {
+    deep.push(format!("level-{i}"));
+  }
+  for _ in 0..65 {
+    deep.push("..");
+  }
+  deep.push("C:foo");
+  deep.push(".");
+  deep.push("");
+
+  let expected = Path::new(r".\C:foo\");
+  assert_eq!(deep.normalize().as_os_str(), expected.as_os_str());
+  assert_eq!(deep.into_normalized().as_os_str(), expected.as_os_str());
+}
+
 #[test]
 fn owned_slash_apis_reuse_valid_unicode_buffers() {
   #[cfg(target_family = "unix")]

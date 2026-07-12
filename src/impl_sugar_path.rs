@@ -28,6 +28,12 @@ const OWNED_NORMALIZE_STACK_ARENA: usize = 512;
 const OWNED_NORMALIZE_COMPONENT_STACK: usize = 24;
 #[cfg(not(unix))]
 const NATIVE_NORMALIZE_COMPONENT_STACK: usize = 32;
+// Bound the quadratic, allocation-free replay used just past the inline stack.
+// Larger inputs reserve one component spill up front and stay linear.
+#[cfg(not(unix))]
+const NATIVE_NORMALIZE_REPLAY_TOTAL_COMPONENT_LIMIT: usize = 64;
+#[cfg(not(unix))]
+const NATIVE_NORMALIZE_REPLAY_ENCODED_BYTE_LIMIT: usize = 512;
 
 #[cfg(unix)]
 #[inline]
@@ -2007,13 +2013,21 @@ fn normalize_inner<'a>(
         }
       }
       Component::Normal(normal) => {
-        if stack.len() == NATIVE_NORMALIZE_COMPONENT_STACK {
-          return normalize_inner_deep(
-            original_components,
-            hint_cap,
-            preserve_trailing,
-            _drive_spelling,
-          );
+        if stack.len() == NATIVE_NORMALIZE_COMPONENT_STACK && !stack.spilled() {
+          let profile = profile_native_normalization(original_components.clone());
+          if profile.component_count <= NATIVE_NORMALIZE_REPLAY_TOTAL_COMPONENT_LIMIT
+            && hint_cap <= NATIVE_NORMALIZE_REPLAY_ENCODED_BYTE_LIMIT
+          {
+            return normalize_inner_bounded_replay(
+              original_components,
+              hint_cap,
+              preserve_trailing,
+              _drive_spelling,
+            );
+          }
+          // Reserve the exact maximum live depth once. Counting every input
+          // component here could amplify parent-heavy paths into excess memory.
+          stack.reserve_exact(profile.max_normal_depth.saturating_sub(stack.len()));
         }
         stack.push(normal);
       }
@@ -2101,6 +2115,35 @@ fn normalize_inner<'a>(
 }
 
 #[cfg(not(unix))]
+struct NativeNormalizationProfile {
+  component_count: usize,
+  max_normal_depth: usize,
+}
+
+#[cfg(not(unix))]
+#[cold]
+fn profile_native_normalization<'a>(
+  components: impl Iterator<Item = Component<'a>>,
+) -> NativeNormalizationProfile {
+  let mut component_count = 0usize;
+  let mut normal_depth = 0usize;
+  let mut max_normal_depth = 0usize;
+  for component in components {
+    component_count += 1;
+    match component {
+      Component::Prefix(_) | Component::CurDir => {}
+      Component::RootDir => normal_depth = 0,
+      Component::ParentDir => normal_depth = normal_depth.saturating_sub(1),
+      Component::Normal(_) => {
+        normal_depth += 1;
+        max_normal_depth = max_normal_depth.max(normal_depth);
+      }
+    }
+  }
+  NativeNormalizationProfile { component_count, max_normal_depth }
+}
+
+#[cfg(not(unix))]
 fn native_normal_survives<'a>(components: impl Iterator<Item = Component<'a>>) -> bool {
   let mut later_depth = 0usize;
   for component in components {
@@ -2120,18 +2163,20 @@ fn native_normal_survives<'a>(components: impl Iterator<Item = Component<'a>>) -
   true
 }
 
-// A path with more than 32 live native components would make `SmallVec` add a
-// second allocation. Re-scan the clonable `Components` iterator instead. This
-// path is deliberately cold and quadratic, but retains the historical single
-// output allocation for arbitrarily deep paths.
+// A path just beyond the 32-component inline stack would make `SmallVec` add a
+// second allocation. For at most 64 total components, re-scan the clonable
+// iterator instead. The caller limits replay to 64 total components and 512
+// encoded bytes; larger inputs use a pre-reserved, linear spill.
 #[cfg(not(unix))]
 #[cold]
-fn normalize_inner_deep<'a>(
+fn normalize_inner_bounded_replay<'a>(
   mut components: Peekable<impl Iterator<Item = Component<'a>> + Clone>,
   hint_cap: usize,
   preserve_trailing: bool,
   _drive_spelling: Option<u8>,
 ) -> Cow<'a, Path> {
+  debug_assert!(components.clone().count() <= NATIVE_NORMALIZE_REPLAY_TOTAL_COMPONENT_LIMIT);
+  debug_assert!(hint_cap <= NATIVE_NORMALIZE_REPLAY_ENCODED_BYTE_LIMIT);
   #[cfg(target_family = "windows")]
   let prefix_plan = if let Some(Component::Prefix(prefix)) = components.peek().copied() {
     let plan = borrowed_windows_prefix_plan(prefix, _drive_spelling);

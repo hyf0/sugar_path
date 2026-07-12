@@ -30,6 +30,9 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / owned dirty 24-component boundary via owned receiver -> PathBuf | 0 | 0 | 0 |
 | normalize / owned dirty 25-component fallback via owned receiver -> PathBuf | 1 | 0 | 0 |
 | normalize / owned dirty 33-component deep fallback via owned receiver -> PathBuf | 1 | 0 | 0 |
+| normalize / non-Unix dirty 64-component replay boundary via owned receiver -> PathBuf | 1 | 0 | 0 |
+| normalize / non-Unix dirty 65-component linear spill via owned receiver -> PathBuf | 2 | 0 | 0 |
+| normalize / non-Unix dirty long 33-component linear spill via owned receiver -> PathBuf | 2 | 0 | 0 |
 | pipeline / dirty join via borrowed receiver -> PathBuf | 2 | 0 | 2 |
 | pipeline / dirty join via owned receiver -> PathBuf | 1 | 0 | 2 |
 | pipeline / dirty join via borrowed receiver -> String | 3 | 0 | 2 |
@@ -122,6 +125,9 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / owned dirty 24-component boundary via owned receiver -> PathBuf | 0 | 0 |
 | normalize / owned dirty 25-component fallback via owned receiver -> PathBuf | 51 | 0 |
 | normalize / owned dirty 33-component deep fallback via owned receiver -> PathBuf | 67 | 0 |
+| normalize / non-Unix dirty 64-component replay boundary via owned receiver -> PathBuf | 129 | 0 |
+| normalize / non-Unix dirty 65-component linear spill via owned receiver -> PathBuf | 1171 | 0 |
+| normalize / non-Unix dirty long 33-component linear spill via owned receiver -> PathBuf | 1090 | 0 |
 | pipeline / dirty join via borrowed receiver -> PathBuf | 100 | 126 |
 | pipeline / dirty join via owned receiver -> PathBuf | 21 | 126 |
 | pipeline / dirty join via borrowed receiver -> String | 170 | 126 |

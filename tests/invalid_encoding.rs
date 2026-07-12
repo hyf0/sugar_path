@@ -511,6 +511,38 @@ mod windows {
   }
 
   #[test]
+  fn deep_linear_spill_preserves_invalid_verbatim_unc_and_trailing_separator() {
+    let mut input = wide_with_invalid(r"\\?\UNC\server-", r"\share");
+    let mut expected = input.clone();
+    for _ in 0..65 {
+      input.extend(r"\a".encode_utf16());
+      expected.extend(r"\a".encode_utf16());
+    }
+    for _ in 0..8 {
+      input.extend(r"\gone\..".encode_utf16());
+    }
+    input.extend(r"\.\".encode_utf16());
+    expected.extend(r"\".encode_utf16());
+
+    let source = path(&input);
+    assert_prefix_class("deep invalid verbatim UNC", &source, PrefixClass::VerbatimUnc);
+    assert!(source.to_str().is_none());
+    assert!(source.as_os_str().len() <= 512);
+
+    let borrowed = source.normalize().into_owned();
+    let owned = source.into_normalized();
+    for (api, normalized) in [("normalize", borrowed), ("into_normalized", owned)] {
+      assert_wide_case("deep invalid verbatim UNC", api, &normalized, &expected);
+      assert_wide_case(
+        "deep invalid verbatim UNC",
+        "idempotent normalize",
+        normalized.normalize().as_ref(),
+        &expected,
+      );
+    }
+  }
+
+  #[test]
   fn relative_fallback_preserves_an_invalid_normal_component() {
     assert_relative_cases(&[
       ("disk", r"c:\BASE\segment-", r"C:\base", "segment-"),
