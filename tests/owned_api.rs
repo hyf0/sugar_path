@@ -54,16 +54,76 @@ fn into_normalized_reuses_current_directory_buffers_without_confusing_borrowed_d
 
 #[test]
 fn into_normalized_matches_borrowed_api_for_dirty_paths() {
+  // Dual algorithm: dirty into_normalized uses stack-arena reuse; borrowed
+  // normalize uses normalize_inner. Keep a broad corpus so the two stay aligned.
   #[cfg(target_family = "unix")]
-  let cases = ["foo/./bar/../baz", "../../foo/../bar", "foo//bar/"];
+  let cases = [
+    "foo/./bar/../baz",
+    "../../foo/../bar",
+    "foo//bar/",
+    "",
+    ".",
+    "./",
+    "foo/..",
+    "foo/../",
+    "a/b/../../c/./d//e/",
+    "../../../x",
+    "/a/./b/../c//",
+    "/../file",
+    "name/../name/../name/../out",
+  ];
   #[cfg(target_family = "windows")]
-  let cases = [r"foo\.\bar\..\baz", r"..\..\foo\..\bar", r"foo\\bar\"];
+  let cases = [
+    r"foo\.\bar\..\baz",
+    r"..\..\foo\..\bar",
+    r"foo\\bar\",
+    "",
+    ".",
+    r".\",
+    r"foo\..",
+    r"foo\..\",
+    r"a\b\..\..\c\.\d\\e\",
+    r"..\..\..\x",
+    r"C:\a\.\b\..\c\\",
+    r"C:\..\file",
+    r"dir\..\C:foo",
+    r"C:foo\.\bar",
+    r"name\..\name\..\name\..\out",
+  ];
 
   for input in cases {
-    let path = owned_path_with_capacity(input);
+    let path = PathBuf::from(input);
     let expected = path.normalize().into_owned();
-    assert_eq!(path.into_normalized().as_os_str(), expected.as_os_str(), "input {input:?}");
+    assert_eq!(
+      path.clone().into_normalized().as_os_str(),
+      expected.as_os_str(),
+      "input {input:?}"
+    );
   }
+}
+
+#[test]
+fn into_normalized_matches_borrowed_api_on_overflow_fallbacks() {
+  // Depth > 24 normals forces the component-stack overflow → normalize_inner path.
+  let mut deep = PathBuf::new();
+  for i in 0..30 {
+    deep.push(format!("level-{i}"));
+  }
+  deep.push(".");
+  deep.push("tail");
+  let expected = deep.normalize().into_owned();
+  assert_eq!(deep.clone().into_normalized().as_os_str(), expected.as_os_str());
+
+  // Encoded length > 512 forces the long-path → normalize_inner path.
+  let long_component = "x".repeat(280);
+  #[cfg(target_family = "unix")]
+  let long = format!("a/{long_component}/./b/{long_component}/../c/");
+  #[cfg(target_family = "windows")]
+  let long = format!(r"a\{long_component}\.\b\{long_component}\..\c\");
+  assert!(long.len() > 512, "fixture must exceed the owned-normalize stack arena");
+  let path = PathBuf::from(&long);
+  let expected = path.normalize().into_owned();
+  assert_eq!(path.clone().into_normalized().as_os_str(), expected.as_os_str());
 }
 
 #[test]
