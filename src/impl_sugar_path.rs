@@ -35,6 +35,11 @@ const NATIVE_NORMALIZE_REPLAY_TOTAL_COMPONENT_LIMIT: usize = 64;
 #[cfg(not(unix))]
 const NATIVE_NORMALIZE_REPLAY_ENCODED_BYTE_LIMIT: usize = 512;
 
+#[cfg(all(test, not(unix)))]
+std::thread_local! {
+  static NATIVE_NORMALIZATION_PROFILE_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[cfg(unix)]
 #[inline]
 fn push_owned_normalize_arena(
@@ -2125,6 +2130,9 @@ struct NativeNormalizationProfile {
 fn profile_native_normalization<'a>(
   components: impl Iterator<Item = Component<'a>>,
 ) -> NativeNormalizationProfile {
+  #[cfg(test)]
+  NATIVE_NORMALIZATION_PROFILE_CALLS.with(|calls| calls.set(calls.get() + 1));
+
   let mut component_count = 0usize;
   let mut normal_depth = 0usize;
   let mut max_normal_depth = 0usize;
@@ -2141,6 +2149,52 @@ fn profile_native_normalization<'a>(
     }
   }
   NativeNormalizationProfile { component_count, max_normal_depth }
+}
+
+#[cfg(all(test, not(unix)))]
+mod native_normalization_profile_tests {
+  use std::path::PathBuf;
+
+  use crate::{SugarPath, SugarPathBuf};
+
+  use super::NATIVE_NORMALIZATION_PROFILE_CALLS;
+
+  fn take_profile_calls() -> usize {
+    NATIVE_NORMALIZATION_PROFILE_CALLS.with(|calls| calls.replace(0))
+  }
+
+  fn assert_profiles_once(path: PathBuf) {
+    assert_eq!(take_profile_calls(), 0);
+    drop(path.normalize());
+    assert_eq!(take_profile_calls(), 1, "borrowed normalization profile count");
+
+    drop(path.into_normalized());
+    assert_eq!(take_profile_calls(), 1, "consuming normalization profile count");
+  }
+
+  fn dirty_depth(depth: usize, component: &str) -> PathBuf {
+    let mut path = PathBuf::new();
+    for _ in 0..depth {
+      path.push(component);
+    }
+    path.push(".");
+    path
+  }
+
+  #[test]
+  fn deep_strategy_profiles_each_normalization_once() {
+    assert_profiles_once(dirty_depth(64, "a"));
+    assert_profiles_once(dirty_depth(65, "a"));
+    assert_profiles_once(dirty_depth(33, "aaaaaaaaaaaaaaaa"));
+
+    let mut oscillating = dirty_depth(32, "base");
+    for _ in 0..256 {
+      oscillating.push("temporary");
+      oscillating.push("..");
+    }
+    oscillating.push(".");
+    assert_profiles_once(oscillating);
+  }
 }
 
 #[cfg(not(unix))]
