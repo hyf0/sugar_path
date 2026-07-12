@@ -69,6 +69,8 @@ jobs:
       - name: Test all features
         run: cargo test --locked --workspace --all-features
 
+  # Continuous gate: Linux + Windows under the Rolldown (cached_current_dir) config only.
+  # Default-feature and macOS snapshots can still be generated locally; they are not CI gates.
   allocations:
     name: Allocation snapshot ${{ matrix.os }}
     strategy:
@@ -76,9 +78,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            snapshot: x86_64-unknown-linux-gnu
+            snapshot: x86_64-unknown-linux-gnu-rolldown.snap
           - os: windows-latest
-            snapshot: x86_64-pc-windows-msvc
+            snapshot: x86_64-pc-windows-msvc-rolldown.snap
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -86,23 +88,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0
-      - name: Check committed allocation snapshots
+      - name: Check committed allocation snapshot
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.allocation_snapshot_mode != 'generate' }}
-        run: |
-          cargo allocs --check benchmarks/allocations/${{ matrix.snapshot }}-default.snap
-          cargo allocs-rolldown --check benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
-      - name: Generate allocation snapshots
+        run: cargo allocs-rolldown --check benchmarks/allocations/${{ matrix.snapshot }}
+      - name: Generate allocation snapshot
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' }}
         run: |
           mkdir -p benchmarks/allocations
-          cargo allocs --write benchmarks/allocations/${{ matrix.snapshot }}-default.snap
-          cargo allocs-rolldown --write benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
-      - name: Upload generated allocation snapshots
+          cargo allocs-rolldown --write benchmarks/allocations/${{ matrix.snapshot }}
+      - name: Upload generated allocation snapshot
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' }}
         uses: actions/upload-artifact@v4
         with:
-          name: allocation-snapshots-${{ matrix.snapshot }}
-          path: |
-            benchmarks/allocations/${{ matrix.snapshot }}-default.snap
-            benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
+          name: allocation-snapshot-${{ matrix.snapshot }}
+          path: benchmarks/allocations/${{ matrix.snapshot }}
           if-no-files-found: error

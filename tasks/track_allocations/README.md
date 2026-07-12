@@ -19,16 +19,22 @@ The scenario matrix covers clean and dirty normalization, current-directory spel
 Run from the repository root with the same Rust toolchain, target, build profile, and features whenever results are compared:
 
 ```sh
+# Continuous CI gates (Rolldown config only; run on a matching host)
+cargo allocs-rolldown --check benchmarks/allocations/x86_64-unknown-linux-gnu-rolldown.snap
+cargo allocs-rolldown --check benchmarks/allocations/x86_64-pc-windows-msvc-rolldown.snap
+
+# Local print for the current host (not committed / not a continuous gate)
+cargo allocs-rolldown
 cargo allocs
-cargo allocs --write benchmarks/allocations/aarch64-apple-darwin-default.snap
-cargo allocs-rolldown --write benchmarks/allocations/aarch64-apple-darwin-rolldown.snap
-cargo allocs --check benchmarks/allocations/aarch64-apple-darwin-default.snap
-cargo allocs-rolldown --check benchmarks/allocations/aarch64-apple-darwin-rolldown.snap
+
+# Rewrite a committed gate only on the matching native host or via workflow_dispatch
+cargo allocs-rolldown --write benchmarks/allocations/x86_64-unknown-linux-gnu-rolldown.snap
+cargo allocs-rolldown --write benchmarks/allocations/x86_64-pc-windows-msvc-rolldown.snap
 ```
 
-The `allocs` alias measures SugarPath's public default feature set. `allocs-rolldown` enables `cached_current_dir`, matching Rolldown. The default mode prints a generated Markdown snapshot. `--write PATH` replaces the named file. `--check PATH` requires the saved platform, target environment, profile, configuration, numeric current-directory shape, and allocation-call table to match; it exits successfully with an informational message when only the requested-byte table changes. Snapshot parsing is line-ending independent, so native Windows CRLF files and LF-normalized checkouts use the same hard-gate table.
+The `allocs` alias measures SugarPath's public default feature set. `allocs-rolldown` enables `cached_current_dir`, matching Rolldown and the continuous CI gate. The default mode prints a generated Markdown snapshot. `--write PATH` replaces the named file. `--check PATH` requires the saved platform, target environment, profile, configuration, numeric current-directory shape, and allocation-call table to match; it exits successfully with an informational message when only the requested-byte table changes. Snapshot parsing is line-ending independent, so native Windows CRLF files and LF-normalized checkouts use the same hard-gate table.
 
-Linux x86_64 GNU and Windows x86_64 MSVC snapshots are generated and checked on native GitHub-hosted runners with Rust 1.97.0. The macOS ARM64 snapshots are generated on a native Apple Silicon host. [`benchmarks/windows-gnu.md`](../../benchmarks/windows-gnu.md) preserves an optional Docker/Wine reproduction procedure; it is not part of the default local workflow and its GNU output must never be relabeled as MSVC evidence.
+Only two snapshots are committed and checked: Linux x86_64 GNU and Windows x86_64 MSVC under the Rolldown configuration, on native GitHub-hosted runners with Rust 1.97.0. Default-feature and macOS results stay local diagnostics. [`benchmarks/windows-gnu.md`](../../benchmarks/windows-gnu.md) preserves an optional Docker/Wine reproduction procedure; it is not part of the default local workflow and its GNU output must never be relabeled as MSVC evidence.
 
 ## Interpreting the snapshot
 

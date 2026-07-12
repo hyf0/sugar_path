@@ -31,9 +31,11 @@ cargo bench --locked --bench normalize
 cargo bench --locked --bench absolutize -- absolutize_with
 cargo bench --locked --features cached_current_dir  # match Rolldown
 
-# Allocation baseline for the current target
-cargo allocs --check benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-default.snap
-cargo allocs-rolldown --check benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-rolldown.snap
+# Allocation baseline (CI gates: Linux + Windows Rolldown snaps only)
+cargo allocs-rolldown --check benchmarks/allocations/x86_64-unknown-linux-gnu-rolldown.snap   # on Linux CI host
+cargo allocs-rolldown --check benchmarks/allocations/x86_64-pc-windows-msvc-rolldown.snap   # on Windows CI host
+# Local print / optional write for the current host (not a continuous gate):
+cargo allocs-rolldown
 ```
 
 ## Architecture

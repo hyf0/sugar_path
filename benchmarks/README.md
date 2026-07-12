@@ -38,27 +38,32 @@ The explicit `--bench` selectors are required when forwarding Criterion-only arg
 
 Criterion data lives under `target/criterion` and is not committed because wall time is machine-specific. Record the exact baseline commit, `rustc -Vv`, target, allocator, and command when reporting a result.
 
-Regenerate the allocation snapshot for the current target:
+The continuous allocation gate is intentionally small: two committed Rolldown (`cached_current_dir`) snapshots checked natively in CI.
 
 ```bash
-cargo allocs --write benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-default.snap
-cargo allocs-rolldown --write benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-rolldown.snap
+# Continuous gates (must run on a matching host/target)
+cargo allocs-rolldown --check benchmarks/allocations/x86_64-unknown-linux-gnu-rolldown.snap
+cargo allocs-rolldown --check benchmarks/allocations/x86_64-pc-windows-msvc-rolldown.snap
+
+# Local investigation on the current host (print; not a committed gate)
+cargo allocs-rolldown
+cargo allocs   # public default features, also local-only
 ```
 
-Verify an existing snapshot:
+Regenerate a gate snapshot only on the matching native host (or via the workflow_dispatch job), then commit the updated file:
 
 ```bash
-cargo allocs --check benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-default.snap
-cargo allocs-rolldown --check benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-rolldown.snap
+cargo allocs-rolldown --write benchmarks/allocations/x86_64-unknown-linux-gnu-rolldown.snap
+cargo allocs-rolldown --write benchmarks/allocations/x86_64-pc-windows-msvc-rolldown.snap
 ```
 
 Allocation counts and reallocations are the cross-run gate. Requested bytes are recorded because they expose repeated short-lived buffers in this crate, but they remain target-, feature-, and current-directory-shape-specific evidence rather than a portable invariant.
 
 CodSpeed runs the Rolldown configuration of the same Criterion suite in two modes on Linux: `simulation` records executed instructions, L1/last-level cache effects, equivalent cycles, and profiles; `memory` records allocator activity and peak heap behavior. Branch misses are not a continuous gate. Use Linux Callgrind with branch simulation only when a concrete branch-layout hypothesis needs diagnosis.
 
-The current final-API snapshots were reproduced natively on macOS ARM64 in both configurations. They record zero allocation calls for canonical descendant `relative -> Cow<Path>`, one for `Cow::into_owned`, one for each descendant and upward strict final-`String` composition, zero for clean `PathBuf::into_normalized`, zero for valid-Unicode `PathBuf::into_slash`, and no fresh allocation plus one growth reallocation when a clean relative receiver consumes an owned cwd through `absolutize_with`. Requested bytes remain platform-specific.
+The committed final-API snapshots record zero allocation calls for canonical descendant `relative -> Cow<Path>`, one for `Cow::into_owned`, one for each descendant and upward strict final-`String` composition, zero for clean `PathBuf::into_normalized`, zero for valid-Unicode `PathBuf::into_slash`, and no fresh allocation plus one growth reallocation when a clean relative receiver consumes an owned cwd through `absolutize_with`. Requested bytes remain platform-specific.
 
-The checked-in final-API matrix contains native macOS ARM64, Linux x86_64 GNU, and Windows x86_64 MSVC snapshots in both configurations. Native GitHub Actions generation run [`29181673809`](https://github.com/hyf0/sugar_path/actions/runs/29181673809) produced the Linux and Windows files for this revision, and ordinary PR CI checks both targets against the committed snapshots. The older Windows-GNU snapshots were removed rather than relabeled; the pinned Docker/Wine commands in [Windows GNU execution](./windows-gnu.md) remain an opt-in historical reproduction reference and were not run for this revision. Non-container GNU and MSVC cross-compilation also provides Windows build evidence. Native Windows timing is still required before making Windows-specific speed claims, while CodSpeed remains the continuous Linux CPU and memory view.
+Ordinary PR CI checks the two Rolldown snapshots on native Linux and Windows runners. Default-feature and macOS results are not continuous gates; print them locally when a regression is suspected. Native GitHub Actions generation run [`29181673809`](https://github.com/hyf0/sugar_path/actions/runs/29181673809) produced the Linux and Windows files for the final API. The older Windows-GNU snapshots were removed rather than relabeled; the pinned Docker/Wine commands in [Windows GNU execution](./windows-gnu.md) remain an opt-in historical reproduction reference. Native Windows timing is still required before making Windows-specific speed claims, while CodSpeed remains the continuous Linux CPU and memory view.
 
 ## Baseline rule
 
