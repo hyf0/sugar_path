@@ -1,26 +1,84 @@
-on:
-  push:
-      
 name: Test
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+    inputs:
+      allocation_snapshot_mode:
+        description: Check committed allocation snapshots or generate artifacts without committing them
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - generate
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   test:
     name: Test ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
-      - name: Install stable
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-            toolchain: stable
-            components: rustfmt, clippy
-
-      - name: lint
+          toolchain: 1.97.0
+          components: rustfmt, clippy
+      - name: Lint
         run: |
           cargo fmt --all --check
-          cargo clippy --all-targets --all-features -- -D warnings
-      - name: cargo test
-        run: cargo test
+          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: Test default features
+        run: cargo test --locked --workspace
+      - name: Test all features
+        run: cargo test --locked --workspace --all-features
+
+  allocations:
+    name: Allocation snapshot ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            snapshot: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            snapshot: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+      - name: Check committed allocation snapshots
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.allocation_snapshot_mode != 'generate' }}
+        run: |
+          cargo allocs --check benchmarks/allocations/${{ matrix.snapshot }}-default.snap
+          cargo allocs-rolldown --check benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
+      - name: Generate allocation snapshots
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' }}
+        run: |
+          mkdir -p benchmarks/allocations
+          cargo allocs --write benchmarks/allocations/${{ matrix.snapshot }}-default.snap
+          cargo allocs-rolldown --write benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
+      - name: Upload generated allocation snapshots
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: allocation-snapshots-${{ matrix.snapshot }}
+          path: |
+            benchmarks/allocations/${{ matrix.snapshot }}-default.snap
+            benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
+          if-no-files-found: error

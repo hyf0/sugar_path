@@ -1,0 +1,13 @@
+[package]
+name = "sugar_path_track_allocations"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[features]
+rolldown = ["sugar_path/cached_current_dir"]
+
+[dependencies]
+arcstr = { version = "=1.2.0", default-features = false }
+mimalloc-safe = "=0.1.64"
+sugar_path = { path = "../.." }

@@ -1,138 +1,122 @@
 use std::hint::black_box;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use sugar_path::SugarPath;
 
-mod fixtures;
+mod support;
 
-use fixtures::{ABSOLUTE_PATHS, FIXTURES};
+use support::workloads::ROLLDOWN_PATHS;
+#[cfg(target_family = "windows")]
+use support::workloads::WINDOWS_SLASH_CASES;
+#[cfg(any(unix, windows))]
+use support::workloads::invalid_unicode_path;
 
-fn criterion_benchmark(c: &mut Criterion) {
-  c.bench_function("to_slash", |b| {
-    b.iter(|| {
-      for fixture in FIXTURES {
-        let path = Path::new(fixture);
-        let result = black_box(path.to_slash());
-        black_box(result);
-      }
-    })
+fn bench_to_slash(criterion: &mut Criterion) {
+  let mut group =
+    criterion.benchmark_group("to_slash/borrowed_receiver/natural_result/rolldown_paths");
+  for case in ROLLDOWN_PATHS {
+    group.throughput(Throughput::Bytes(case.path.len() as u64));
+    group.bench_with_input(BenchmarkId::from_parameter(case.name), case, |bencher, case| {
+      bencher.iter(|| {
+        let path = Path::new(black_box(case.path));
+        black_box(path.to_slash().expect("benchmark paths are valid UTF-8"))
+      });
+    });
+  }
+  group.finish();
+
+  let mut group =
+    criterion.benchmark_group("to_slash_lossy/borrowed_receiver/natural_result/rolldown_paths");
+  for case in ROLLDOWN_PATHS {
+    group.throughput(Throughput::Bytes(case.path.len() as u64));
+    group.bench_with_input(BenchmarkId::from_parameter(case.name), case, |bencher, case| {
+      bencher.iter(|| {
+        let path = Path::new(black_box(case.path));
+        black_box(path.to_slash_lossy())
+      });
+    });
+  }
+  group.finish();
+
+  let owned_case = ROLLDOWN_PATHS[2];
+  let mut group = criterion.benchmark_group("slash/owned_input");
+  group.throughput(Throughput::Bytes(owned_case.path.len() as u64));
+  group.bench_function("borrowed_receiver/string_result", |bencher| {
+    bencher.iter_batched(
+      || PathBuf::from(owned_case.path),
+      |input| {
+        black_box(
+          black_box(input.as_path())
+            .to_slash()
+            .expect("benchmark paths are valid UTF-8")
+            .into_owned(),
+        )
+      },
+      BatchSize::SmallInput,
+    );
   });
-
-  c.bench_function("to_slash_lossy", |b| {
-    b.iter(|| {
-      for fixture in FIXTURES {
-        let path = Path::new(fixture);
-        let result = black_box(path.to_slash_lossy());
-        black_box(result);
-      }
-    })
+  // v2 cannot consume the PathBuf during slash conversion, so this row uses
+  // the same String-producing operation as the borrowed-receiver control.
+  group.bench_function("owned_receiver/string_result", |bencher| {
+    bencher.iter_batched(
+      || PathBuf::from(owned_case.path),
+      |input| {
+        black_box(
+          black_box(input.as_path())
+            .to_slash()
+            .expect("benchmark paths are valid UTF-8")
+            .into_owned(),
+        )
+      },
+      BatchSize::SmallInput,
+    );
   });
-
-  c.bench_function("to_slash_absolute_paths", |b| {
-    b.iter(|| {
-      for path_str in ABSOLUTE_PATHS {
-        let path = Path::new(path_str);
-        let result = black_box(path.to_slash());
-        black_box(result);
-      }
-    })
-  });
-
-  c.bench_function("to_slash_lossy_absolute_paths", |b| {
-    b.iter(|| {
-      for path_str in ABSOLUTE_PATHS {
-        let path = Path::new(path_str);
-        let result = black_box(path.to_slash_lossy());
-        black_box(result);
-      }
-    })
-  });
+  group.finish();
 
   #[cfg(target_family = "windows")]
-  c.bench_function("to_slash_windows_specific", |b| {
-    let windows_paths = vec![
-      "C:\\Windows\\System32",
-      "C:\\Users\\Admin\\Documents\\file.txt",
-      "D:\\Projects\\rust\\src\\main.rs",
-      "\\\\server\\share\\folder\\document.doc",
-      "C:\\Program Files\\Application\\bin",
-      "C:\\temp\\cache\\..\\data",
-      "file:stream",
-      "C:relative\\path",
-    ];
+  {
+    let mut group = criterion.benchmark_group("slash/windows_separator_branches");
+    for case in WINDOWS_SLASH_CASES {
+      group.throughput(Throughput::Bytes(case.path.len() as u64));
+      group.bench_with_input(
+        BenchmarkId::new("borrowed_receiver/strict_natural_result", case.name),
+        case,
+        |bencher, case| {
+          bencher.iter(|| {
+            let path = Path::new(black_box(case.path));
+            black_box(path.to_slash().expect("benchmark paths are valid UTF-8"))
+          });
+        },
+      );
+      group.bench_with_input(
+        BenchmarkId::new("borrowed_receiver/lossy_natural_result", case.name),
+        case,
+        |bencher, case| {
+          bencher.iter(|| {
+            let path = Path::new(black_box(case.path));
+            black_box(path.to_slash_lossy())
+          });
+        },
+      );
+    }
+    group.finish();
+  }
 
-    b.iter(|| {
-      for path_str in &windows_paths {
-        let path = Path::new(path_str);
-        let result = black_box(path.to_slash());
-        black_box(result);
-      }
-    })
-  });
-
-  #[cfg(target_family = "windows")]
-  c.bench_function("to_slash_lossy_windows_specific", |b| {
-    let windows_paths = vec![
-      "C:\\Windows\\System32",
-      "C:\\Users\\Admin\\Documents\\file.txt",
-      "D:\\Projects\\rust\\src\\main.rs",
-      "\\\\server\\share\\folder\\document.doc",
-      "C:\\Program Files\\Application\\bin",
-      "C:\\temp\\cache\\..\\data",
-      "file:stream",
-      "C:relative\\path",
-    ];
-
-    b.iter(|| {
-      for path_str in &windows_paths {
-        let path = Path::new(path_str);
-        let result = black_box(path.to_slash_lossy());
-        black_box(result);
-      }
-    })
-  });
-
-  c.bench_function("to_slash_mixed_separators", |b| {
-    let mixed_paths =
-      vec!["foo/bar\\baz", "hello\\world/test", "./foo\\../bar/baz", "C:/Users\\Admin/Documents"];
-
-    b.iter(|| {
-      for path_str in &mixed_paths {
-        let path = Path::new(path_str);
-        let result = black_box(path.to_slash());
-        black_box(result);
-      }
-    })
-  });
-
-  c.bench_function("to_slash_deep_nesting", |b| {
-    let deep_paths = vec![
-      "a/b/c/d/e/f/g/h/i/j/k/l/m/n",
-      "/usr/local/lib/python3.9/site-packages/numpy/core/include",
-      "./very/long/relative/path/to/some/deeply/nested/file.txt",
-    ];
-
-    b.iter(|| {
-      for path_str in &deep_paths {
-        let path = Path::new(path_str);
-        let result = black_box(path.to_slash());
-        black_box(result);
-      }
-    })
-  });
-
-  c.bench_function("to_slash_vs_to_slash_lossy", |b| {
-    b.iter(|| {
-      for fixture in FIXTURES {
-        let path = Path::new(fixture);
-        let result1 = black_box(path.to_slash());
-        let result2 = black_box(path.to_slash_lossy());
-        black_box((result1, result2));
-      }
-    })
-  });
+  #[cfg(any(unix, windows))]
+  {
+    let invalid = invalid_unicode_path();
+    let mut group = criterion.benchmark_group("slash/invalid_unicode");
+    group.throughput(Throughput::Bytes(invalid.as_os_str().len() as u64));
+    group.bench_function("borrowed_receiver/fallible_result", |bencher| {
+      bencher.iter(|| black_box(black_box(invalid.as_path()).to_slash()));
+    });
+    group.bench_function("borrowed_receiver/lossy_result", |bencher| {
+      bencher.iter(|| black_box(black_box(invalid.as_path()).to_slash_lossy()));
+    });
+    group.finish();
+  }
 }
 
-criterion_group!(benches, criterion_benchmark);
+criterion_group!(benches, bench_to_slash);
 criterion_main!(benches);
