@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [3.0.0](https://github.com/hyf0/sugar_path/compare/sugar_path-v2.0.1...sugar_path-v3.0.0) - 2026-07-12
+
+### Added
+
+- [**breaking**] redesign path APIs for borrowing and owned reuse ([#40](https://github.com/hyf0/sugar_path/pull/40))
+- [**breaking**] explicitly require Cow for `absolutize_with` base parameter ([#37](https://github.com/hyf0/sugar_path/pull/37))
+
+### Other
+
+- redesign public API guidance and slim CI allocation gates ([#42](https://github.com/hyf0/sugar_path/pull/42))
+- establish performance baselines ([#41](https://github.com/hyf0/sugar_path/pull/41))
+
 ### Added
 
 - Add `try_absolutize` and `try_relative` for callers that handle ambient current-directory errors.
