@@ -14,17 +14,15 @@ use crate::{SugarPath, utils::try_get_current_dir};
 type StrVec<'a> = SmallVec<[&'a str; 8]>;
 type OsStrVec<'a> = SmallVec<[&'a OsStr; 16]>;
 
-enum OwnedNormalizeOutcome {
-  Unchanged,
-  CurrentDirectory,
-  Owned(PathBuf),
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TrailingSeparator {
   Preserve,
   Strip,
 }
+
+/// Stack arena for owned normalize component bytes. Paths longer than this fall
+/// back to `normalize_inner` (one heap allocation — same floor as before).
+const OWNED_NORMALIZE_STACK_ARENA: usize = 512;
 
 enum RelativeOutcome<'a> {
   BorrowedNative(&'a Path),
@@ -495,27 +493,244 @@ where
   Cow::Owned(normalize_owned_for_resolution(PathBuf::from(resolved)))
 }
 
-fn normalize_owned_path_buf_with(mut path: PathBuf, trailing: TrailingSeparator) -> PathBuf {
-  let outcome = match normalize_path(&path, trailing) {
-    Cow::Borrowed(normalized) if std::ptr::eq(normalized, path.as_path()) => {
-      OwnedNormalizeOutcome::Unchanged
-    }
-    Cow::Borrowed(normalized) if normalized.as_os_str() == OsStr::new(".") => {
-      OwnedNormalizeOutcome::CurrentDirectory
-    }
-    Cow::Borrowed(normalized) => OwnedNormalizeOutcome::Owned(normalized.to_owned()),
-    Cow::Owned(normalized) => OwnedNormalizeOutcome::Owned(normalized),
-  };
+/// Normalize an owned buffer, reusing its allocation whenever capacity is enough.
+///
+/// Dirty inputs almost always shrink (`.` / `..` / duplicate separators removed),
+/// so join → `into_normalized` and `absolutize_with` (cwd push then normalize)
+/// avoid a second heap allocation for the rebuild on typical path lengths.
+fn normalize_owned_path_buf_with(path: PathBuf, trailing: TrailingSeparator) -> PathBuf {
+  if !needs_normalization(&path, trailing) {
+    return path;
+  }
 
-  match outcome {
-    OwnedNormalizeOutcome::Unchanged => path,
-    OwnedNormalizeOutcome::CurrentDirectory => {
+  // Long paths: keep the previous one-allocation rebuild via `normalize_inner`.
+  if path.as_os_str().len() > OWNED_NORMALIZE_STACK_ARENA {
+    return normalize_owned_path_buf_via_inner(path, trailing);
+  }
+
+  normalize_owned_path_buf_reusing(path, trailing)
+}
+
+fn normalize_owned_path_buf_via_inner(mut path: PathBuf, trailing: TrailingSeparator) -> PathBuf {
+  let preserve_trailing = trailing == TrailingSeparator::Preserve && has_trailing_separator(&path);
+  let drive = {
+    #[cfg(target_family = "windows")]
+    {
+      windows_drive_spelling(&path)
+    }
+    #[cfg(not(target_family = "windows"))]
+    {
+      None
+    }
+  };
+  match normalize_inner(
+    path.components().peekable(),
+    path.as_os_str().len(),
+    preserve_trailing,
+    drive,
+  ) {
+    Cow::Borrowed(normalized) if std::ptr::eq(normalized, path.as_path()) => path,
+    Cow::Borrowed(normalized) if normalized.as_os_str() == OsStr::new(".") => {
       path.clear();
       path.push(".");
       path
     }
-    OwnedNormalizeOutcome::Owned(normalized) => normalized,
+    Cow::Borrowed(normalized) => normalized.to_path_buf(),
+    Cow::Owned(normalized) => normalized,
   }
+}
+
+fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) -> PathBuf {
+  let preserve_trailing = trailing == TrailingSeparator::Preserve && has_trailing_separator(&path);
+  #[cfg(target_family = "windows")]
+  let original_len = path.as_os_str().len();
+  #[cfg(target_family = "windows")]
+  let drive_spelling = windows_drive_spelling(&path);
+
+  let mut arena = [0u8; OWNED_NORMALIZE_STACK_ARENA];
+  let mut arena_len = 0usize;
+  let mut stack: [(u16, u16); 24] = [(0, 0); 24];
+  let mut stack_len = 0usize;
+  let mut has_root = false;
+  let mut leading_parents = 0usize;
+
+  #[cfg(target_family = "windows")]
+  let mut prefix_range: Option<(u16, u16)> = None;
+  #[cfg(target_family = "windows")]
+  let mut prefix_only_suffix: Option<u8> = None;
+  #[cfg(target_family = "windows")]
+  let mut prefix_root_is_optional = false;
+
+  let push_arena = |arena: &mut [u8; OWNED_NORMALIZE_STACK_ARENA],
+                    arena_len: &mut usize,
+                    bytes: &[u8]|
+   -> Option<(u16, u16)> {
+    if *arena_len + bytes.len() > OWNED_NORMALIZE_STACK_ARENA {
+      return None;
+    }
+    let start = *arena_len;
+    arena[start..start + bytes.len()].copy_from_slice(bytes);
+    *arena_len += bytes.len();
+    Some((start as u16, *arena_len as u16))
+  };
+
+  for component in path.components() {
+    match component {
+      #[cfg(target_family = "windows")]
+      Component::Prefix(p) => {
+        let start = arena_len;
+        let (suffix, optional_root, extra): (Option<u8>, bool, SmallVec<[u8; 64]>) = match p.kind()
+        {
+          std::path::Prefix::VerbatimDisk(drive) => {
+            let mut extra = SmallVec::new();
+            extra.extend_from_slice(b"\\\\?\\");
+            extra.push(drive_spelling.unwrap_or(drive));
+            extra.push(b':');
+            (None, false, extra)
+          }
+          std::path::Prefix::DeviceNS(device) => {
+            let mut extra = SmallVec::new();
+            extra.extend_from_slice(b"\\\\.\\");
+            extra.extend_from_slice(device.as_encoded_bytes());
+            (None, true, extra)
+          }
+          std::path::Prefix::UNC(server, share) => {
+            let mut extra = SmallVec::new();
+            extra.extend_from_slice(b"\\\\");
+            extra.extend_from_slice(server.as_encoded_bytes());
+            extra.push(b'\\');
+            extra.extend_from_slice(share.as_encoded_bytes());
+            (Some(b'\\'), false, extra)
+          }
+          std::path::Prefix::Disk(drive) => {
+            let mut extra = SmallVec::new();
+            extra.push(drive_spelling.unwrap_or(drive));
+            extra.push(b':');
+            (Some(b'.'), false, extra)
+          }
+          std::path::Prefix::Verbatim(_) | std::path::Prefix::VerbatimUNC(_, _) => {
+            let mut extra = SmallVec::new();
+            extra.extend_from_slice(p.as_os_str().as_encoded_bytes());
+            (None, true, extra)
+          }
+        };
+        if push_arena(&mut arena, &mut arena_len, &extra).is_none() {
+          return normalize_owned_path_buf_via_inner(path, trailing);
+        }
+        prefix_only_suffix = suffix;
+        prefix_root_is_optional = optional_root;
+        prefix_range = Some((start as u16, arena_len as u16));
+      }
+      #[cfg(not(target_family = "windows"))]
+      Component::Prefix(_) => unreachable!("prefix components only exist on Windows"),
+      Component::RootDir => {
+        has_root = true;
+        stack_len = 0;
+        leading_parents = 0;
+      }
+      Component::CurDir => {}
+      Component::ParentDir => {
+        if stack_len > 0 {
+          stack_len -= 1;
+        } else if !has_root {
+          leading_parents += 1;
+        }
+      }
+      Component::Normal(normal) => {
+        if stack_len >= stack.len() {
+          return normalize_owned_path_buf_via_inner(path, trailing);
+        }
+        let Some(range) = push_arena(&mut arena, &mut arena_len, normal.as_encoded_bytes()) else {
+          return normalize_owned_path_buf_via_inner(path, trailing);
+        };
+        stack[stack_len] = range;
+        stack_len += 1;
+      }
+    }
+  }
+
+  let sep_byte = std::path::MAIN_SEPARATOR as u8;
+  let mut buf = path.into_os_string().into_encoded_bytes();
+  buf.clear();
+
+  #[cfg(target_family = "windows")]
+  let prefix_len = {
+    if let Some((start, end)) = prefix_range {
+      buf.extend_from_slice(&arena[start as usize..end as usize]);
+    }
+    buf.len()
+  };
+  #[cfg(not(target_family = "windows"))]
+  let _prefix_len = 0usize;
+
+  if has_root {
+    #[cfg(target_family = "windows")]
+    {
+      let prefix_only_input = prefix_root_is_optional && prefix_len == original_len;
+      if !prefix_only_input {
+        buf.push(sep_byte);
+      }
+    }
+    #[cfg(not(target_family = "windows"))]
+    {
+      buf.push(sep_byte);
+    }
+  }
+
+  let mut need_sep = false;
+  for _ in 0..leading_parents {
+    if need_sep {
+      buf.push(sep_byte);
+    }
+    buf.extend_from_slice(b"..");
+    need_sep = true;
+  }
+  for range in stack.iter().take(stack_len) {
+    if need_sep {
+      buf.push(sep_byte);
+    }
+    buf.extend_from_slice(&arena[range.0 as usize..range.1 as usize]);
+    need_sep = true;
+  }
+
+  #[cfg(target_family = "windows")]
+  if prefix_root_is_optional && stack_len == 0 && leading_parents == 0 && !preserve_trailing {
+    buf.truncate(prefix_len);
+  }
+
+  #[cfg(target_family = "windows")]
+  if prefix_len == 0 && !has_root && !windows_standalone_relative_bytes_are_representable(&buf) {
+    let len = buf.len();
+    buf.reserve(2);
+    buf.resize(len + 2, 0);
+    buf.copy_within(0..len, 2);
+    buf[0] = b'.';
+    buf[1] = sep_byte;
+  }
+
+  if buf.is_empty() {
+    if preserve_trailing {
+      buf.extend_from_slice(b".");
+      buf.push(sep_byte);
+    } else {
+      buf.extend_from_slice(b".");
+    }
+  } else {
+    #[cfg(target_family = "windows")]
+    if buf.len() == prefix_len
+      && prefix_len > 0
+      && let Some(suffix) = prefix_only_suffix
+    {
+      buf.push(suffix);
+    }
+
+    if preserve_trailing && buf.last() != Some(&sep_byte) {
+      buf.push(sep_byte);
+    }
+  }
+
+  // SAFETY: buf is built from OsStr component bytes plus ASCII separators / dots.
+  PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) })
 }
 
 pub(crate) fn normalize_owned_path_buf(path: PathBuf) -> PathBuf {
@@ -954,7 +1169,7 @@ fn try_relative_outcome<'a>(
     target_path.try_absolutize()?
   };
 
-  Ok(relative_from_resolved(base, target))
+  Ok(relative_from_resolved(base.as_ref(), target.as_ref()))
 }
 
 fn relative_outcome_with<'a, P>(
@@ -993,7 +1208,7 @@ where
     return RelativeOutcome::Native(normalize_for_resolution(target.as_ref()).into_owned());
   }
 
-  relative_from_resolved(base, target)
+  relative_from_resolved(base.as_ref(), target.as_ref())
 }
 
 impl SugarPath for Path {
@@ -1035,6 +1250,9 @@ impl SugarPath for Path {
     }
 
     let mut resolved: PathBuf = cwd.into();
+    // Grow once for the relative suffix so push + dirty normalize reuse do not
+    // thrash capacity on the common cwd+module path shape.
+    resolved.as_mut_os_string().reserve(self.as_os_str().len().saturating_add(1));
     resolved.push(self);
     Cow::Owned(normalize_owned_for_resolution(resolved))
   }
