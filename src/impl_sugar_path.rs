@@ -20,9 +20,25 @@ enum TrailingSeparator {
   Strip,
 }
 
-/// Stack arena for owned normalize component bytes. Paths longer than this fall
-/// back to `normalize_inner` (one heap allocation — same floor as before).
+/// Stack arena for owned normalize component bytes. Paths longer than this or
+/// deeper than the component stack fall back to `normalize_inner`.
 const OWNED_NORMALIZE_STACK_ARENA: usize = 512;
+const OWNED_NORMALIZE_COMPONENT_STACK: usize = 24;
+
+#[inline]
+fn push_owned_normalize_arena(
+  arena: &mut [u8; OWNED_NORMALIZE_STACK_ARENA],
+  arena_len: &mut usize,
+  bytes: &[u8],
+) -> Option<(u16, u16)> {
+  if *arena_len + bytes.len() > OWNED_NORMALIZE_STACK_ARENA {
+    return None;
+  }
+  let start = *arena_len;
+  arena[start..start + bytes.len()].copy_from_slice(bytes);
+  *arena_len += bytes.len();
+  Some((start as u16, *arena_len as u16))
+}
 
 enum RelativeOutcome<'a> {
   BorrowedNative(&'a Path),
@@ -511,6 +527,9 @@ fn normalize_owned_path_buf_with(path: PathBuf, trailing: TrailingSeparator) -> 
   normalize_owned_path_buf_reusing(path, trailing)
 }
 
+// This handles only long or overflowing owned inputs. Keeping it cold lets fat
+// LTO retain the established single-call borrowed normalization path.
+#[cold]
 fn normalize_owned_path_buf_via_inner(mut path: PathBuf, trailing: TrailingSeparator) -> PathBuf {
   let preserve_trailing = trailing == TrailingSeparator::Preserve && has_trailing_separator(&path);
   let drive = {
@@ -549,7 +568,8 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
 
   let mut arena = [0u8; OWNED_NORMALIZE_STACK_ARENA];
   let mut arena_len = 0usize;
-  let mut stack: [(u16, u16); 24] = [(0, 0); 24];
+  let mut stack: [(u16, u16); OWNED_NORMALIZE_COMPONENT_STACK] =
+    [(0, 0); OWNED_NORMALIZE_COMPONENT_STACK];
   let mut stack_len = 0usize;
   let mut has_root = false;
   let mut leading_parents = 0usize;
@@ -561,19 +581,6 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
   #[cfg(target_family = "windows")]
   let mut prefix_root_is_optional = false;
 
-  let push_arena = |arena: &mut [u8; OWNED_NORMALIZE_STACK_ARENA],
-                    arena_len: &mut usize,
-                    bytes: &[u8]|
-   -> Option<(u16, u16)> {
-    if *arena_len + bytes.len() > OWNED_NORMALIZE_STACK_ARENA {
-      return None;
-    }
-    let start = *arena_len;
-    arena[start..start + bytes.len()].copy_from_slice(bytes);
-    *arena_len += bytes.len();
-    Some((start as u16, *arena_len as u16))
-  };
-
   // Do not move `path` while `components()` borrows it. Overflow of the stack
   // arena or component stack sets a flag and breaks; the owned fallback runs
   // only after the iterator is dropped.
@@ -583,45 +590,44 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
       #[cfg(target_family = "windows")]
       Component::Prefix(p) => {
         let start = arena_len;
-        let (suffix, optional_root, extra): (Option<u8>, bool, SmallVec<[u8; 64]>) = match p.kind()
-        {
+        let prefix_shape = match p.kind() {
           std::path::Prefix::VerbatimDisk(drive) => {
-            let mut extra = SmallVec::new();
-            extra.extend_from_slice(b"\\\\?\\");
-            extra.push(drive_spelling.unwrap_or(drive));
-            extra.push(b':');
-            (None, false, extra)
+            let drive = [drive_spelling.unwrap_or(drive)];
+            (push_owned_normalize_arena(&mut arena, &mut arena_len, b"\\\\?\\").is_some()
+              && push_owned_normalize_arena(&mut arena, &mut arena_len, &drive).is_some()
+              && push_owned_normalize_arena(&mut arena, &mut arena_len, b":").is_some())
+            .then_some((None, false))
           }
           std::path::Prefix::DeviceNS(device) => {
-            let mut extra = SmallVec::new();
-            extra.extend_from_slice(b"\\\\.\\");
-            extra.extend_from_slice(device.as_encoded_bytes());
-            (None, true, extra)
+            (push_owned_normalize_arena(&mut arena, &mut arena_len, b"\\\\.\\").is_some()
+              && push_owned_normalize_arena(&mut arena, &mut arena_len, device.as_encoded_bytes())
+                .is_some())
+            .then_some((None, true))
           }
           std::path::Prefix::UNC(server, share) => {
-            let mut extra = SmallVec::new();
-            extra.extend_from_slice(b"\\\\");
-            extra.extend_from_slice(server.as_encoded_bytes());
-            extra.push(b'\\');
-            extra.extend_from_slice(share.as_encoded_bytes());
-            (Some(b'\\'), false, extra)
+            (push_owned_normalize_arena(&mut arena, &mut arena_len, b"\\\\").is_some()
+              && push_owned_normalize_arena(&mut arena, &mut arena_len, server.as_encoded_bytes())
+                .is_some()
+              && push_owned_normalize_arena(&mut arena, &mut arena_len, b"\\").is_some()
+              && push_owned_normalize_arena(&mut arena, &mut arena_len, share.as_encoded_bytes())
+                .is_some())
+            .then_some((Some(b'\\'), false))
           }
           std::path::Prefix::Disk(drive) => {
-            let mut extra = SmallVec::new();
-            extra.push(drive_spelling.unwrap_or(drive));
-            extra.push(b':');
-            (Some(b'.'), false, extra)
+            let drive = [drive_spelling.unwrap_or(drive)];
+            (push_owned_normalize_arena(&mut arena, &mut arena_len, &drive).is_some()
+              && push_owned_normalize_arena(&mut arena, &mut arena_len, b":").is_some())
+            .then_some((Some(b'.'), false))
           }
           std::path::Prefix::Verbatim(_) | std::path::Prefix::VerbatimUNC(_, _) => {
-            let mut extra = SmallVec::new();
-            extra.extend_from_slice(p.as_os_str().as_encoded_bytes());
-            (None, true, extra)
+            push_owned_normalize_arena(&mut arena, &mut arena_len, p.as_os_str().as_encoded_bytes())
+              .map(|_| (None, true))
           }
         };
-        if push_arena(&mut arena, &mut arena_len, &extra).is_none() {
+        let Some((suffix, optional_root)) = prefix_shape else {
           fallback_to_inner = true;
           break;
-        }
+        };
         prefix_only_suffix = suffix;
         prefix_root_is_optional = optional_root;
         prefix_range = Some((start as u16, arena_len as u16));
@@ -646,7 +652,9 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
           fallback_to_inner = true;
           break;
         }
-        let Some(range) = push_arena(&mut arena, &mut arena_len, normal.as_encoded_bytes()) else {
+        let Some(range) =
+          push_owned_normalize_arena(&mut arena, &mut arena_len, normal.as_encoded_bytes())
+        else {
           fallback_to_inner = true;
           break;
         };
@@ -760,6 +768,9 @@ fn normalize_owned_for_resolution(path: PathBuf) -> PathBuf {
 }
 
 fn normalize_path(path: &Path, trailing: TrailingSeparator) -> Cow<'_, Path> {
+  if path.as_os_str().is_empty() {
+    return Cow::Borrowed(Path::new("."));
+  }
   if !needs_normalization(path, trailing) {
     return Cow::Borrowed(path);
   }
@@ -1275,9 +1286,6 @@ impl SugarPath for Path {
     }
 
     let mut resolved: PathBuf = cwd.into();
-    // Grow once for the relative suffix so push + dirty normalize reuse do not
-    // thrash capacity on the common cwd+module path shape.
-    resolved.as_mut_os_string().reserve(self.as_os_str().len().saturating_add(1));
     resolved.push(self);
     Cow::Owned(normalize_owned_for_resolution(resolved))
   }

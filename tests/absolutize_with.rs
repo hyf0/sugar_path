@@ -1,6 +1,5 @@
 use std::borrow::Cow;
-#[cfg(target_family = "unix")]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use sugar_path::SugarPath;
 mod test_utils;
 
@@ -50,6 +49,33 @@ fn unix_absolutize_with_borrowed_and_owned_cwd_arguments() {
   assert_eq_str!("app.log".absolutize_with(base_path), "/var/log/app.log");
 }
 
+#[test]
+fn absolutize_with_reuses_an_exactly_sized_owned_cwd_when_push_fits() {
+  #[cfg(not(target_family = "windows"))]
+  let cases = [("/", "", "/"), ("/base/", "file", "/base/file")];
+  #[cfg(target_family = "windows")]
+  let cases = [
+    (r"C:\", "", r"C:\"),
+    (r"C:\base\", "file", r"C:\base\file"),
+    (r"C:\base", r"\file", r"C:\file"),
+  ];
+
+  for (base, input, expected) in cases {
+    let mut cwd = PathBuf::with_capacity(base.len().max(expected.len()));
+    cwd.push(base);
+    let identity = (cwd.as_os_str().as_encoded_bytes().as_ptr(), cwd.capacity());
+
+    let absolute = Path::new(input).absolutize_with(cwd).into_owned();
+
+    assert_eq!(absolute.as_os_str(), Path::new(expected).as_os_str(), "input {input:?}");
+    assert_eq!(
+      (absolute.as_os_str().as_encoded_bytes().as_ptr(), absolute.capacity()),
+      identity,
+      "input {input:?}",
+    );
+  }
+}
+
 #[cfg(target_family = "windows")]
 #[test]
 fn windows_absolutize_with() {
@@ -82,6 +108,7 @@ fn windows_absolutize_with() {
   assert_eq_str!(r"C:file".absolutize_with(r"\\?\c:\base"), r"\\?\C:\base\file");
   assert_eq_str!("C:file".absolutize_with("D:\\base"), "C:file");
   assert_eq_str!("C:.\\file".absolutize_with("D:\\base"), "C:file");
+  assert_eq_str!("file".absolutize_with(PathBuf::from(r"\\?\C:\base")), r"\\?\C:\base\file");
 }
 
 #[cfg(target_family = "windows")]

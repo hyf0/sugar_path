@@ -88,18 +88,86 @@ fn into_normalized_matches_borrowed_api_for_dirty_paths() {
     r"C:\..\file",
     r"dir\..\C:foo",
     r"C:foo\.\bar",
+    r"\\?\c:\foo\..",
+    r"\\.\PIPE\foo\..",
+    r"\\?\UNC\server\share\foo\..",
+    r"\\?\Volume{abc}\foo\..",
     r"name\..\name\..\name\..\out",
   ];
 
   for input in cases {
     let path = PathBuf::from(input);
     let expected = path.normalize().into_owned();
-    assert_eq!(
-      path.clone().into_normalized().as_os_str(),
-      expected.as_os_str(),
-      "input {input:?}"
-    );
+    assert_eq!(path.clone().into_normalized().as_os_str(), expected.as_os_str(), "input {input:?}");
   }
+}
+
+fn dirty_path_with_depth(depth: usize) -> PathBuf {
+  let mut path = PathBuf::with_capacity(256);
+  for _ in 0..depth {
+    path.push("a");
+  }
+  path.push(".");
+  path
+}
+
+#[test]
+fn into_normalized_reuses_the_component_and_byte_arena_boundaries() {
+  let path = dirty_path_with_depth(24);
+  let identity = buffer_identity(&path);
+  let expected = path.normalize().into_owned();
+  let normalized = path.into_normalized();
+  assert_eq!(normalized.as_os_str(), expected.as_os_str());
+  assert_eq!(buffer_identity(&normalized), identity);
+
+  let path = dirty_path_with_depth(25);
+  let expected = path.normalize().into_owned();
+  assert_eq!(path.into_normalized().as_os_str(), expected.as_os_str());
+
+  let separator = std::path::MAIN_SEPARATOR;
+  let input = format!(".{separator}{}", "x".repeat(510));
+  assert_eq!(input.len(), 512);
+  let path = PathBuf::from(input);
+  let identity = buffer_identity(&path);
+  let expected = path.normalize().into_owned();
+  let normalized = path.into_normalized();
+  assert_eq!(normalized.as_os_str(), expected.as_os_str());
+  assert_eq!(buffer_identity(&normalized), identity);
+
+  let input = format!(".{separator}{}", "x".repeat(511));
+  assert_eq!(input.len(), 513);
+  let path = PathBuf::from(input);
+  let expected = path.normalize().into_owned();
+  assert_eq!(path.into_normalized().as_os_str(), expected.as_os_str());
+}
+
+#[cfg(target_family = "windows")]
+#[test]
+fn into_normalized_reuses_long_unc_prefixes_without_a_temporary_heap_buffer() {
+  let server = "s".repeat(57);
+  let prefix = format!(r"\\{server}\share");
+  assert_eq!(prefix.len(), 65);
+  let mut path = PathBuf::with_capacity(256);
+  path.push(&prefix);
+  for _ in 0..24 {
+    path.push("a");
+  }
+  path.push(".");
+  assert_eq!(path.as_os_str().len(), 115);
+  let identity = buffer_identity(&path);
+  let expected = path.normalize().into_owned();
+  let normalized = path.into_normalized();
+  assert_eq!(normalized.as_os_str(), expected.as_os_str());
+  assert_eq!(buffer_identity(&normalized), identity);
+
+  let mut deep = PathBuf::from(prefix);
+  for _ in 0..25 {
+    deep.push("a");
+  }
+  deep.push(".");
+  assert_eq!(deep.as_os_str().len(), 117);
+  let expected = deep.normalize().into_owned();
+  assert_eq!(deep.into_normalized().as_os_str(), expected.as_os_str());
 }
 
 #[test]

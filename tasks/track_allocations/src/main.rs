@@ -266,6 +266,14 @@ const SCENARIOS: &[Scenario] = &[
     run: normalize_owned_invalid_consuming,
   },
   Scenario {
+    name: "normalize / owned dirty 24-component boundary via owned receiver -> PathBuf",
+    run: normalize_owned_dirty_depth_24_consuming,
+  },
+  Scenario {
+    name: "normalize / owned dirty 25-component fallback via owned receiver -> PathBuf",
+    run: normalize_owned_dirty_depth_25_consuming,
+  },
+  Scenario {
     name: "pipeline / dirty join via borrowed receiver -> PathBuf",
     run: join_normalize_owned,
   },
@@ -312,6 +320,16 @@ const SCENARIOS: &[Scenario] = &[
     name: "Windows / canonical verbatim UNC -> normalized path",
     run: windows_normalize_canonical_verbatim_unc,
   },
+  #[cfg(target_family = "windows")]
+  Scenario {
+    name: "Windows / long-prefix 24-component UNC boundary via owned receiver -> PathBuf",
+    run: windows_normalize_long_prefix_unc_consuming,
+  },
+  #[cfg(target_family = "windows")]
+  Scenario {
+    name: "Windows / long-prefix 25-component UNC fallback via owned receiver -> PathBuf",
+    run: windows_normalize_long_prefix_deep_unc_consuming,
+  },
   Scenario {
     name: "absolutize / clean absolute input -> absolute path",
     run: absolutize_clean_absolute,
@@ -331,6 +349,14 @@ const SCENARIOS: &[Scenario] = &[
   Scenario {
     name: "absolutize_with / clean relative input + owned cwd -> absolute path (setup excluded)",
     run: absolutize_with_clean_relative_owned_cwd,
+  },
+  Scenario {
+    name: "absolutize_with / empty input + exact owned root cwd -> absolute path (setup excluded)",
+    run: absolutize_with_empty_exact_owned_root,
+  },
+  Scenario {
+    name: "absolutize_with / relative input + exact trailing-separator owned cwd -> absolute path (setup excluded)",
+    run: absolutize_with_relative_exact_trailing_owned_cwd,
   },
   Scenario {
     name: "relative / canonical native descendant -> natural result",
@@ -518,7 +544,9 @@ const SCENARIOS: &[Scenario] = &[
 
 #[cfg(target_family = "windows")]
 mod native_paths {
+  pub const ABSOLUTE_ROOT: &str = r"C:\";
   pub const ABSOLUTE_BASE: &str = r"C:\workspace\rolldown\crates\rolldown";
+  pub const ABSOLUTE_TRAILING_BASE: &str = r"C:\base\";
   pub const ABSOLUTE_CLEAN: &str = r"C:\workspace\rolldown\crates\rolldown\src\bundle\bundle.rs";
   pub const ABSOLUTE_TARGET: &str =
     r"C:\workspace\rolldown\crates\rolldown\src\stages\generate_stage\mod.rs";
@@ -534,6 +562,7 @@ mod native_paths {
   pub const CANONICAL_LEADING_PARENTS: &str = r"..\..\chunks\shared.js";
   pub const RELATIVE_BASE: &str = r"crates\rolldown\src\module_loader";
   pub const RELATIVE_CLEAN_INPUT: &str = r"src\module_loader\module_task.rs";
+  pub const RELATIVE_FITS: &str = "file";
   pub const RELATIVE_INPUT: &str = r".\src\stages\..\bundle\bundle.rs";
   pub const RELATIVE_TARGET: &str = r"crates\rolldown\src\stages\generate_stage\mod.rs";
   pub const RELATIVE_CURRENT_BASE: &str = "";
@@ -579,7 +608,9 @@ mod native_paths {
 
 #[cfg(not(target_family = "windows"))]
 mod native_paths {
+  pub const ABSOLUTE_ROOT: &str = "/";
   pub const ABSOLUTE_BASE: &str = "/workspace/rolldown/crates/rolldown";
+  pub const ABSOLUTE_TRAILING_BASE: &str = "/base/";
   pub const ABSOLUTE_CLEAN: &str = "/workspace/rolldown/crates/rolldown/src/bundle/bundle.rs";
   pub const ABSOLUTE_TARGET: &str =
     "/workspace/rolldown/crates/rolldown/src/stages/generate_stage/mod.rs";
@@ -595,6 +626,7 @@ mod native_paths {
   pub const CANONICAL_LEADING_PARENTS: &str = "../../chunks/shared.js";
   pub const RELATIVE_BASE: &str = "crates/rolldown/src/module_loader";
   pub const RELATIVE_CLEAN_INPUT: &str = "src/module_loader/module_task.rs";
+  pub const RELATIVE_FITS: &str = "file";
   pub const RELATIVE_INPUT: &str = "./src/stages/../bundle/bundle.rs";
   pub const RELATIVE_TARGET: &str = "crates/rolldown/src/stages/generate_stage/mod.rs";
   pub const RELATIVE_CURRENT_BASE: &str = "";
@@ -823,6 +855,33 @@ fn normalize_owned_invalid_consuming(mode: RunMode) -> AllocationStats {
   })
 }
 
+fn dirty_owned_path_with_depth(depth: usize) -> PathBuf {
+  let mut path = PathBuf::with_capacity(256);
+  for _ in 0..depth {
+    path.push("a");
+  }
+  path.push(".");
+  path
+}
+
+fn normalize_owned_dirty_depth_consuming(mode: RunMode, depth: usize) -> AllocationStats {
+  run_prepared(
+    mode,
+    || dirty_owned_path_with_depth(depth),
+    |path| {
+      black_box(black_box(path).into_normalized());
+    },
+  )
+}
+
+fn normalize_owned_dirty_depth_24_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_dirty_depth_consuming(mode, 24)
+}
+
+fn normalize_owned_dirty_depth_25_consuming(mode: RunMode) -> AllocationStats {
+  normalize_owned_dirty_depth_consuming(mode, 25)
+}
+
 fn join_normalize_owned(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
@@ -950,6 +1009,39 @@ fn windows_normalize_canonical_verbatim_unc(mode: RunMode) -> AllocationStats {
   windows_normalize_case(mode, native_paths::VERBATIM_UNC_CANONICAL)
 }
 
+#[cfg(target_family = "windows")]
+fn windows_long_prefix_unc_path(depth: usize) -> PathBuf {
+  let server = "s".repeat(57);
+  let mut path = PathBuf::from(format!(r"\\{server}\share"));
+  for _ in 0..depth {
+    path.push("a");
+  }
+  path.push(".");
+  path
+}
+
+#[cfg(target_family = "windows")]
+fn windows_normalize_long_prefix_unc_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || windows_long_prefix_unc_path(24),
+    |path| {
+      black_box(black_box(path).into_normalized());
+    },
+  )
+}
+
+#[cfg(target_family = "windows")]
+fn windows_normalize_long_prefix_deep_unc_consuming(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || windows_long_prefix_unc_path(25),
+    |path| {
+      black_box(black_box(path).into_normalized());
+    },
+  )
+}
+
 fn absolutize_clean_absolute(mode: RunMode) -> AllocationStats {
   run_prepared(
     mode,
@@ -1004,6 +1096,37 @@ fn absolutize_with_clean_relative_owned_cwd(mode: RunMode) -> AllocationStats {
     |cwd| {
       let value =
         black_box(Path::new(native_paths::RELATIVE_CLEAN_INPUT)).absolutize_with(black_box(cwd));
+      black_box(value);
+    },
+  )
+}
+
+fn absolutize_with_empty_exact_owned_root(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || {
+      let mut cwd = PathBuf::with_capacity(native_paths::ABSOLUTE_ROOT.len());
+      cwd.push(native_paths::ABSOLUTE_ROOT);
+      cwd
+    },
+    |cwd| {
+      let value = black_box(Path::new("")).absolutize_with(black_box(cwd));
+      black_box(value);
+    },
+  )
+}
+
+fn absolutize_with_relative_exact_trailing_owned_cwd(mode: RunMode) -> AllocationStats {
+  run_prepared(
+    mode,
+    || {
+      let capacity = native_paths::ABSOLUTE_TRAILING_BASE.len() + native_paths::RELATIVE_FITS.len();
+      let mut cwd = PathBuf::with_capacity(capacity);
+      cwd.push(native_paths::ABSOLUTE_TRAILING_BASE);
+      cwd
+    },
+    |cwd| {
+      let value = black_box(Path::new(native_paths::RELATIVE_FITS)).absolutize_with(black_box(cwd));
       black_box(value);
     },
   )
