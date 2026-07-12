@@ -46,7 +46,7 @@ Two extension traits over standard path types: `SugarPath` adds borrowed operati
 - **`src/sugar_path.rs`** — Borrowed trait definition and authoritative method contracts
 - **`src/sugar_path_buf.rs`** — Consuming `PathBuf` trait definition with doc examples
 - **`src/impl_sugar_path.rs`** — All implementations. Two impl blocks: one for `Path`, one for `str`; `String` and other string-like values use normal deref method lookup. Contains `normalize_inner()`, `needs_normalization()`, `relative_str()` and helper functions
-- **`src/utils.rs`** — `get_current_dir()` helper for `absolutize()`
+- **`src/utils.rs`** — `try_get_current_dir()` helper for ambient `absolutize` / `relative` (returns `io::Result`; optionally caches under `cached_current_dir`)
 
 Key patterns:
 - `Cow<'_, Path>` return types to avoid allocation when the input is already clean
