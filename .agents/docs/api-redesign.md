@@ -2,7 +2,7 @@
 
 ## Status
 
-This record is the settled design and implementation checkpoint for the breaking SugarPath API revision. The public surface, lexical semantics, ownership behavior, native-path coverage, tests, and allocation evidence described below are implemented. Continuous allocation gates cover native Linux and Windows under the Rolldown (`cached_current_dir`) configuration; other hosts and the public default feature set remain local diagnostics. Backward compatibility and migration cost were not design constraints; unpublished branch prototypes were rejected instead of being carried into the coherent breaking surface.
+This record is the settled design and implementation checkpoint for the breaking SugarPath API revision. The public surface, lexical semantics, ownership behavior, native-path coverage, tests, and allocation evidence described below are implemented. Continuous allocation gates cover native Linux and Windows via `cargo allocs` (always with `cached_current_dir`); other hosts remain local diagnostics. Backward compatibility and migration cost were not design constraints; unpublished branch prototypes were rejected instead of being carried into the coherent breaking surface.
 
 ## Agreed direction
 
@@ -108,7 +108,7 @@ fn into_slash_lossy(self) -> String;
 - [x] Implement `into_normalized` plus strict, fallible strict, and explicitly lossy slash conversion for borrowed and consuming inputs while preserving arbitrary native encoding outside string conversion.
 - [x] Benchmark package-sideEffects, stable ID, sourcemap, owned `PathBuf`, and native-separator paths against final containers using the ordinary consuming composition, then leave the unpublished fused prototype out of the final surface.
 - [x] Update README examples, rustdoc, changelog, native allocation snapshots, and PCR records that described earlier branch prototypes.
-- [x] Replace the historical multi-host dual-config allocation matrix with final-API continuous gates: Linux x86_64 GNU and Windows x86_64 MSVC under the Rolldown configuration, produced and checked on native GitHub Actions.
+- [x] Replace the historical multi-host dual-config allocation matrix with final-API continuous gates: Linux x86_64 GNU and Windows x86_64 MSVC via a single `cargo allocs` entry point, produced and checked on native GitHub Actions.
 
 Delivery order is part of the evidence: baseline PR #41 landed on main first as `9e6b627`, with the same tree as reviewed baseline tip `e483f8f`, and PR #40 is rebuilt on top of it. Benchmark rows keep receiver/input-shape and final-output identifiers stable across that boundary; historical `9712b6e` and Windows-GNU measurements retain their original labels rather than being presented as #41 results.
 

@@ -69,8 +69,8 @@ jobs:
       - name: Test all features
         run: cargo test --locked --workspace --all-features
 
-  # Continuous gate: Linux + Windows under the Rolldown (cached_current_dir) config only.
-  # Default-feature and macOS snapshots can still be generated locally; they are not CI gates.
+  # Continuous gate: Linux + Windows only. The tracker always measures the
+  # cached_current_dir production config via `cargo allocs`.
   allocations:
     name: Allocation snapshot ${{ matrix.os }}
     strategy:
@@ -78,9 +78,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            snapshot: x86_64-unknown-linux-gnu-rolldown.snap
+            snapshot: x86_64-unknown-linux-gnu.snap
           - os: windows-latest
-            snapshot: x86_64-pc-windows-msvc-rolldown.snap
+            snapshot: x86_64-pc-windows-msvc.snap
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -90,12 +90,12 @@ jobs:
           toolchain: 1.97.0
       - name: Check committed allocation snapshot
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.allocation_snapshot_mode != 'generate' }}
-        run: cargo allocs-rolldown --check benchmarks/allocations/${{ matrix.snapshot }}
+        run: cargo allocs --check benchmarks/allocations/${{ matrix.snapshot }}
       - name: Generate allocation snapshot
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' }}
         run: |
           mkdir -p benchmarks/allocations
-          cargo allocs-rolldown --write benchmarks/allocations/${{ matrix.snapshot }}
+          cargo allocs --write benchmarks/allocations/${{ matrix.snapshot }}
       - name: Upload generated allocation snapshot
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' }}
         uses: actions/upload-artifact@v4

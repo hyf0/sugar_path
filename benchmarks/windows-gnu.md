@@ -6,7 +6,7 @@ This document preserves the pinned Docker/Wine environment that produced earlier
 
 The final implementation makes the main `relative` method return `Cow<Path>` and scans clean native Windows separators, roots, and common prefixes without first allocating forward-slash copies of target and base. The native descendant target is zero allocations for `relative -> Cow<Path>` and exactly one final output allocation for `Cow::into_owned` or `relative(base).into_owned().into_slash()`. Upward, dirty, mixed-separator, different-root, UNC, verbatim, device, and invalid-wide cases remain separate correctness and allocation rows.
 
-This refresh did not include permission to run Docker, Wine, or containers, and none of those commands was run. Non-container GNU and MSVC cross-compilation checks provide build evidence but do not execute Windows path semantics. GitHub Actions run [`29181673809`](https://github.com/hyf0/sugar_path/actions/runs/29181673809) executed the allocation runner natively on Windows and generated the final x86_64-MSVC evidence; ordinary PR CI checks the committed Rolldown MSVC snapshot only. The older Windows-GNU snapshots were removed instead of being relabeled; the commands below can reproduce new GNU evidence only when the local execution gate is explicitly satisfied. Native timing remains a separate requirement for any Windows speed claim.
+This refresh did not include permission to run Docker, Wine, or containers, and none of those commands was run. Non-container GNU and MSVC cross-compilation checks provide build evidence but do not execute Windows path semantics. GitHub Actions run [`29181673809`](https://github.com/hyf0/sugar_path/actions/runs/29181673809) executed the allocation runner natively on Windows and generated the final x86_64-MSVC evidence; ordinary PR CI checks the committed MSVC snapshot via `cargo allocs` only. The older Windows-GNU snapshots were removed instead of being relabeled; the commands below can reproduce new GNU evidence only when the local execution gate is explicitly satisfied. Native timing remains a separate requirement for any Windows speed claim.
 
 ## Local execution gate
 
@@ -62,6 +62,8 @@ At the historical `9712b6e` checkpoint, all library, integration, and documentat
 
 ## Historical allocation snapshots
 
+The dual default/Rolldown snapshot commands below are a historical record of the pre-cleanup matrix. The tracker no longer exposes a separate `rolldown` feature: `cargo allocs` always measures `cached_current_dir`. For optional new GNU evidence under the current gate, write a single file:
+
 ```sh
 docker run --rm --platform linux/amd64 \
   -e RUSTFLAGS='-l advapi32' \
@@ -71,20 +73,10 @@ docker run --rm --platform linux/amd64 \
   -v "$PWD/benchmarks/allocations":/snapshots \
   -v sugar-path-cross-target:/work/target \
   "$IMAGE" sh -lc \
-  'cd /work && /tmp/home/.cargo/bin/cargo run --release --target x86_64-pc-windows-gnu -p sugar_path_track_allocations --locked -- --write /snapshots/x86_64-pc-windows-gnu-default.snap'
-
-docker run --rm --platform linux/amd64 \
-  -e RUSTFLAGS='-l advapi32' \
-  -v sugar-path-cross-cargo:/tmp/home/.cargo \
-  -v sugar-path-cross-rustup:/tmp/home/.rustup \
-  -v "$PWD":/work:ro \
-  -v "$PWD/benchmarks/allocations":/snapshots \
-  -v sugar-path-cross-target:/work/target \
-  "$IMAGE" sh -lc \
-  'cd /work && /tmp/home/.cargo/bin/cargo run --release --target x86_64-pc-windows-gnu -p sugar_path_track_allocations --features rolldown --locked -- --write /snapshots/x86_64-pc-windows-gnu-rolldown.snap'
+  'cd /work && /tmp/home/.cargo/bin/cargo run --release --target x86_64-pc-windows-gnu -p sugar_path_track_allocations --locked -- --write /snapshots/x86_64-pc-windows-gnu.snap'
 ```
 
-Each historical snapshot scenario was reproduced identically seven times before the file was written. Those GNU snapshots covered ordinary and verbatim UNC normalization, same-share and different-share relative paths, forward and mixed separators, invalid encoding, and the then-current Rolldown pipelines. The old GNU files are no longer checked in because their scenario matrix predates the breaking API; current native Windows evidence uses the MSVC files generated and checked by GitHub Actions.
+Each historical snapshot scenario was reproduced identically seven times before the file was written. Those GNU snapshots covered ordinary and verbatim UNC normalization, same-share and different-share relative paths, forward and mixed separators, invalid encoding, and the then-current Rolldown pipelines. The old GNU files are no longer checked in because their scenario matrix predates the breaking API; current native Windows evidence uses the MSVC file generated and checked by GitHub Actions.
 
 ## Verbatim UNC regression coverage
 

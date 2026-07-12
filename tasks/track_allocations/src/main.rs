@@ -1573,7 +1573,7 @@ fn render_snapshot(measurements: &[Measurement], cwd_shape: CwdShape) -> String 
     std::env::consts::ARCH,
     TARGET_ENVIRONMENT,
     if cfg!(debug_assertions) { "debug" } else { "release" },
-    if cfg!(feature = "rolldown") { "Rolldown (cached_current_dir)" } else { "default" },
+    "cached_current_dir",
     std::path::MAIN_SEPARATOR,
     cwd_shape.encoded_bytes,
     cwd_shape.components

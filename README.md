@@ -120,7 +120,7 @@ let output = target.relative(base).into_owned().into_slash();
 assert_eq!(output, "src/lib.rs");
 ```
 
-Allocation-sensitive behavior is gated in CI on Linux and Windows under the Rolldown (`cached_current_dir`) configuration. See the [benchmark and allocation methodology](https://github.com/hyf0/sugar_path/blob/main/benchmarks/README.md).
+Allocation-sensitive behavior is gated in CI on Linux and Windows via `cargo allocs` (always under `cached_current_dir`). See the [benchmark and allocation methodology](https://github.com/hyf0/sugar_path/blob/main/benchmarks/README.md).
 
 ## Cargo features
 

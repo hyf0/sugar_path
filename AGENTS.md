@@ -31,11 +31,11 @@ cargo bench --locked --bench normalize
 cargo bench --locked --bench absolutize -- absolutize_with
 cargo bench --locked --features cached_current_dir  # match Rolldown
 
-# Allocation baseline (CI gates: Linux + Windows Rolldown snaps only)
-cargo allocs-rolldown --check benchmarks/allocations/x86_64-unknown-linux-gnu-rolldown.snap   # on Linux CI host
-cargo allocs-rolldown --check benchmarks/allocations/x86_64-pc-windows-msvc-rolldown.snap   # on Windows CI host
-# Local print / optional write for the current host (not a continuous gate):
-cargo allocs-rolldown
+# Allocation baseline (CI gates: Linux + Windows snaps; always cached_current_dir)
+cargo allocs --check benchmarks/allocations/x86_64-unknown-linux-gnu.snap   # on Linux CI host
+cargo allocs --check benchmarks/allocations/x86_64-pc-windows-msvc.snap     # on Windows CI host
+# Local print for the current host (not a continuous gate unless the target matches):
+cargo allocs
 ```
 
 ## Architecture
