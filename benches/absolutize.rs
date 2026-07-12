@@ -1,73 +1,81 @@
 use std::borrow::Cow;
 use std::hint::black_box;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use sugar_path::SugarPath;
 
-mod fixtures;
+mod support;
 
-use fixtures::{ABSOLUTE_PATHS, DIRTY_ABSOLUTE, RELATIVE_CLEAN};
+use support::workloads::{ROLLDOWN_PATHS, ROLLDOWN_ROOT};
 
-fn criterion_benchmark(c: &mut Criterion) {
-  // Mixed absolute paths
-  c.bench_function("absolutize", |b| {
-    b.iter(|| {
-      for absolute_path in ABSOLUTE_PATHS {
-        black_box(absolute_path.absolutize());
-      }
-    })
-  });
-  let cwd = std::env::current_dir().unwrap();
-  c.bench_function("absolutize_with", |b| {
-    b.iter(|| {
-      for absolute_path in ABSOLUTE_PATHS {
-        black_box(absolute_path.absolutize_with(Cow::Borrowed(cwd.as_path())));
-      }
-    })
-  });
+#[cfg(not(target_family = "windows"))]
+const RELATIVE_MODULE: &str = "crates/rolldown/src/module_loader/external_module_task.rs";
+#[cfg(target_family = "windows")]
+const RELATIVE_MODULE: &str = r"crates\rolldown\src\module_loader\external_module_task.rs";
 
-  // Already-absolute, already-clean paths (zero-alloc target after Cow change)
-  c.bench_function("absolutize_already_clean_absolute", |b| {
-    b.iter(|| {
-      for path in ABSOLUTE_PATHS {
-        black_box(Path::new(path).absolutize());
-      }
-    })
-  });
-  c.bench_function("absolutize_with_already_clean_absolute", |b| {
-    b.iter(|| {
-      for path in ABSOLUTE_PATHS {
-        black_box(Path::new(path).absolutize_with(Cow::Borrowed(cwd.as_path())));
-      }
-    })
-  });
+#[cfg(not(target_family = "windows"))]
+const DIRTY_RELATIVE_MODULE: &str = "crates/rolldown/src/module_loader/../bundle/bundle.rs";
+#[cfg(target_family = "windows")]
+const DIRTY_RELATIVE_MODULE: &str = r"crates\rolldown\src\module_loader\..\bundle\bundle.rs";
 
-  // Relative clean paths (always allocates — control group)
-  c.bench_function("absolutize_relative_paths", |b| {
-    b.iter(|| {
-      for path in RELATIVE_CLEAN {
-        black_box(Path::new(path).absolutize());
-      }
-    })
-  });
-  c.bench_function("absolutize_with_relative_paths", |b| {
-    b.iter(|| {
-      for path in RELATIVE_CLEAN {
-        black_box(Path::new(path).absolutize_with(Cow::Borrowed(cwd.as_path())));
-      }
-    })
-  });
+fn bench_absolutize(criterion: &mut Criterion) {
+  let clean_absolute = ROLLDOWN_PATHS[2].path;
 
-  // Dirty absolute paths (needs normalization — always allocates)
-  c.bench_function("absolutize_dirty_absolute", |b| {
-    b.iter(|| {
-      for path in DIRTY_ABSOLUTE {
-        black_box(Path::new(path).absolutize());
-      }
-    })
+  let mut group = criterion.benchmark_group("absolutize/current_dir");
+  group.throughput(Throughput::Bytes(clean_absolute.len() as u64));
+  group.bench_function("clean_absolute", |bencher| {
+    bencher.iter(|| {
+      let input = Path::new(black_box(clean_absolute));
+      black_box(input.absolutize())
+    });
   });
+  group.throughput(Throughput::Bytes(RELATIVE_MODULE.len() as u64));
+  group.bench_function("relative", |bencher| {
+    bencher.iter(|| {
+      let input = Path::new(black_box(RELATIVE_MODULE));
+      black_box(input.absolutize())
+    });
+  });
+  group.finish();
+
+  let mut group = criterion.benchmark_group("absolutize_with/borrowed_cwd");
+  group.throughput(Throughput::Bytes(clean_absolute.len() as u64));
+  group.bench_function("clean_absolute", |bencher| {
+    bencher.iter(|| {
+      let input = Path::new(black_box(clean_absolute));
+      let base = Path::new(black_box(ROLLDOWN_ROOT));
+      black_box(input.absolutize_with(Cow::Borrowed(base)))
+    });
+  });
+  for (name, path) in
+    [("relative_clean", RELATIVE_MODULE), ("relative_dirty", DIRTY_RELATIVE_MODULE)]
+  {
+    group.throughput(Throughput::Bytes((path.len() + ROLLDOWN_ROOT.len()) as u64));
+    group.bench_function(name, |bencher| {
+      bencher.iter(|| {
+        let input = Path::new(black_box(path));
+        let base = Path::new(black_box(ROLLDOWN_ROOT));
+        black_box(input.absolutize_with(Cow::Borrowed(base)))
+      });
+    });
+  }
+  group.finish();
+
+  let mut group = criterion.benchmark_group("absolutize_with/owned_cwd");
+  group.throughput(Throughput::Bytes((RELATIVE_MODULE.len() + ROLLDOWN_ROOT.len()) as u64));
+  group.bench_function("relative_clean", |bencher| {
+    bencher.iter_with_setup_wrapper(|runner| {
+      let base = PathBuf::from(black_box(ROLLDOWN_ROOT));
+      runner.run(|| {
+        let input = Path::new(black_box(RELATIVE_MODULE));
+        let output = input.absolutize_with(Cow::Owned(base));
+        drop(black_box(output));
+      });
+    });
+  });
+  group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark);
+criterion_group!(benches, bench_absolutize);
 criterion_main!(benches);

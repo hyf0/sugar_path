@@ -1,0 +1,3 @@
+[alias]
+allocs = "run --release --locked -p sugar_path_track_allocations --"
+allocs-rolldown = "run --release --locked -p sugar_path_track_allocations --features rolldown --"

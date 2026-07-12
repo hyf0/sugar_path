@@ -1,108 +1,86 @@
 use std::hint::black_box;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use sugar_path::SugarPath;
 
-mod fixtures;
+mod support;
 
-#[cfg(not(target_family = "windows"))]
-use fixtures::ALREADY_NORMALIZED_UNIX;
-#[cfg(target_family = "windows")]
-use fixtures::ALREADY_NORMALIZED_WINDOWS;
-use fixtures::{ABSOLUTE_PATHS, FIXTURES};
+#[cfg(any(unix, windows))]
+use support::workloads::invalid_unicode_path;
+use support::workloads::{
+  CANONICAL_LEADING_PARENTS, CURRENT_DIRECTORY_CASES, DIRTY_PATHS, LEADING_PARENT_SCAN_CASES,
+  PathCase, ROLLDOWN_PATHS,
+};
 
-fn criterion_benchmark(c: &mut Criterion) {
-  // Paths that need normalization (existing behavior baseline)
-  c.bench_function("normalize_needs_work", |b| {
-    b.iter(|| {
-      for fixture in FIXTURES {
-        black_box(Path::new(fixture).normalize());
-      }
-    })
-  });
-
-  // Paths already in normal form (the Cow::Borrowed fast path target)
-  c.bench_function("normalize_already_clean", |b| {
-    #[cfg(not(target_family = "windows"))]
-    let paths = ALREADY_NORMALIZED_UNIX;
-    #[cfg(target_family = "windows")]
-    let paths = ALREADY_NORMALIZED_WINDOWS;
-
-    b.iter(|| {
-      for fixture in paths {
-        black_box(Path::new(fixture).normalize());
-      }
-    })
-  });
-
-  // Already-normalized absolute paths (reuses existing ABSOLUTE_PATHS)
-  c.bench_function("normalize_already_clean_absolute", |b| {
-    b.iter(|| {
-      for fixture in ABSOLUTE_PATHS {
-        black_box(Path::new(fixture).normalize());
-      }
-    })
-  });
-
-  // Mixed workload: interleaved clean and needs-work paths
-  c.bench_function("normalize_mixed_workload", |b| {
-    #[cfg(not(target_family = "windows"))]
-    let clean = ALREADY_NORMALIZED_UNIX;
-    #[cfg(target_family = "windows")]
-    let clean = ALREADY_NORMALIZED_WINDOWS;
-
-    let mixed: Vec<&str> = clean.iter().zip(FIXTURES.iter()).flat_map(|(c, d)| [*c, *d]).collect();
-
-    b.iter(|| {
-      for fixture in &mixed {
-        black_box(Path::new(fixture).normalize());
-      }
-    })
-  });
-
-  // Short clean paths (isolate fixed-overhead savings)
-  c.bench_function("normalize_short_clean", |b| {
-    let short_paths = [
-      "foo",
-      "foo/bar",
-      "/foo",
-      "/foo/bar",
-      "src/main.rs",
-      "file.txt",
-      "bar",
-      "baz/qux",
-      "/bar",
-      "/bar/baz",
-      "tests/unit.rs",
-      "image.png",
-    ];
-    b.iter(|| {
-      for fixture in &short_paths {
-        black_box(Path::new(fixture).normalize());
-      }
-    })
-  });
-
-  // Deep clean paths (isolate memchr scan cost scaling)
-  c.bench_function("normalize_deep_clean", |b| {
-    let deep_paths = [
-      "a/b/c/d/e/f/g/h/i/j",
-      "/usr/local/share/doc/packages/example/tutorials/advanced/chapter1/section2",
-      "/home/user/projects/company/backend/services/api/controllers/v2/handlers/auth/login/validate/token/refresh/generate/key/store/cache/data",
-      "/level1/level2/level3/level4/level5/level6/level7/level8/level9/level10/level11/level12",
-      "p/q/r/s/t/u/v/w/x/y",
-      "/opt/data/warehouse/etl/pipelines/transforms/staging/output/validated/reports",
-      "/srv/data/projects/org/team/repo/packages/core/src/modules/auth/handlers/v3/internal/process/queue/worker/task",
-      "/alpha/bravo/charlie/delta/echo/foxtrot/golf/hotel/india/juliet/kilo/lima",
-    ];
-    b.iter(|| {
-      for fixture in &deep_paths {
-        black_box(Path::new(fixture).normalize());
-      }
-    })
-  });
+fn bench_path_cases(criterion: &mut Criterion, group_name: &str, cases: &[PathCase]) {
+  let mut group = criterion.benchmark_group(group_name);
+  for case in cases {
+    group.throughput(Throughput::Bytes(case.path.len() as u64));
+    group.bench_with_input(BenchmarkId::from_parameter(case.name), case, |bencher, case| {
+      bencher.iter(|| {
+        let input = Path::new(black_box(case.path));
+        black_box(input.normalize())
+      });
+    });
+  }
+  group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark);
+fn bench_normalize(criterion: &mut Criterion) {
+  bench_path_cases(criterion, "normalize/clean_rolldown", ROLLDOWN_PATHS);
+  bench_path_cases(criterion, "normalize/needs_work", DIRTY_PATHS);
+  bench_path_cases(criterion, "normalize/canonical_leading_parents", &[CANONICAL_LEADING_PARENTS]);
+  bench_path_cases(criterion, "normalize/leading_parent_prescan", LEADING_PARENT_SCAN_CASES);
+  bench_path_cases(criterion, "normalize/current_directory_spellings", CURRENT_DIRECTORY_CASES);
+
+  let total_bytes = ROLLDOWN_PATHS.iter().map(|case| case.path.len() as u64).sum();
+  let mut group = criterion.benchmark_group("normalize/rolldown_corpus");
+  group.throughput(Throughput::Bytes(total_bytes));
+  group.bench_function("clean", |bencher| {
+    bencher.iter(|| {
+      for case in black_box(ROLLDOWN_PATHS) {
+        let input = Path::new(black_box(case.path));
+        black_box(input.normalize());
+      }
+    });
+  });
+  group.finish();
+
+  #[cfg(any(unix, windows))]
+  {
+    let invalid = invalid_unicode_path();
+    let mut group = criterion.benchmark_group("normalize/invalid_encoding");
+    group.throughput(Throughput::Bytes(invalid.as_os_str().len() as u64));
+    group.bench_function("lexically_clean", |bencher| {
+      bencher.iter(|| black_box(black_box(invalid.as_path()).normalize()));
+    });
+    group.finish();
+  }
+
+  for case in [&ROLLDOWN_PATHS[2], &DIRTY_PATHS[1]] {
+    let mut group = criterion.benchmark_group(format!("normalize/owned_input/{}", case.name));
+    group.throughput(Throughput::Bytes(case.path.len() as u64));
+    group.bench_function("borrowed_receiver/pathbuf_result", |bencher| {
+      bencher.iter_batched(
+        || PathBuf::from(case.path),
+        |input| black_box(black_box(input.as_path()).normalize().into_owned()),
+        BatchSize::SmallInput,
+      );
+    });
+    // The v2 API has no consuming normalization method. Keeping the same
+    // baseline operation under this output-oriented ID lets v3 measure
+    // whether consuming the owned input improves the same PathBuf result.
+    group.bench_function("owned_receiver/pathbuf_result", |bencher| {
+      bencher.iter_batched(
+        || PathBuf::from(case.path),
+        |input| black_box(black_box(input.as_path()).normalize().into_owned()),
+        BatchSize::SmallInput,
+      );
+    });
+    group.finish();
+  }
+}
+
+criterion_group!(benches, bench_normalize);
 criterion_main!(benches);

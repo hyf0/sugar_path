@@ -1,3 +1,7 @@
+[workspace]
+members = ["tasks/track_allocations"]
+resolver = "3"
+
 [package]
 name = "sugar_path"
 description = "Sugar functions for manipulating paths"
@@ -7,6 +11,7 @@ version = "2.0.1"
 edition = "2024"
 license = "MIT"
 autobenches = false
+exclude = [".agents/", ".cargo/", ".github/", "AGENTS.md", "CLAUDE.md", "benchmarks/"]
 
 [features]
 # Enable `cached_current_dir` will make `SugarPath` to only call `std::env::current_dir` once for all path operations.
@@ -20,10 +25,14 @@ memchr = "2"
 smallvec = "1.15"
 
 [dev-dependencies]
+arcstr = { version = "=1.2.0", default-features = false }
 criterion2 = { version = "3", default-features = false }
+mimalloc-safe = "=0.1.64"
 
 [profile.bench]
-debug = true
+codegen-units = 1
+debug = "line-tables-only"
+lto = "fat"
 
 [[bench]]
 name = "absolutize"
@@ -43,4 +52,8 @@ harness = false
 
 [[bench]]
 name = "as_path"
+harness = false
+
+[[bench]]
+name = "rolldown"
 harness = false

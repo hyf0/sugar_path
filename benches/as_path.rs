@@ -1,56 +1,44 @@
 use std::hint::black_box;
 use std::path::Path;
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use sugar_path::SugarPath;
 
-mod fixtures;
+mod support;
 
-use fixtures::FIXTURES;
+use support::workloads::ROLLDOWN_PATHS;
 
-fn criterion_benchmark(c: &mut Criterion) {
-  c.bench_function("as_path_str", |b| {
-    b.iter(|| {
-      for fixture in FIXTURES {
-        // Benchmark converting &str to Path using as_path
-        let path = black_box(fixture.as_path());
-        black_box(path);
+fn bench_as_path(criterion: &mut Criterion) {
+  let mut group = criterion.benchmark_group("as_path/rolldown_corpus");
+  group.throughput(Throughput::Elements(ROLLDOWN_PATHS.len() as u64));
+
+  group.bench_function("str", |bencher| {
+    bencher.iter(|| {
+      for case in black_box(ROLLDOWN_PATHS) {
+        black_box(black_box(case.path).as_path());
       }
-    })
+    });
   });
 
-  c.bench_function("as_path_string", |b| {
-    let string_fixtures: Vec<String> = FIXTURES.iter().map(|s| s.to_string()).collect();
-    b.iter(|| {
-      for fixture in &string_fixtures {
-        // Benchmark converting String to Path using as_path
-        let path = black_box(fixture.as_path());
-        black_box(path);
+  let owned: Vec<String> = ROLLDOWN_PATHS.iter().map(|case| case.path.to_owned()).collect();
+  group.bench_function("string", |bencher| {
+    bencher.iter(|| {
+      for path in black_box(&owned) {
+        black_box(black_box(path).as_path());
       }
-    })
+    });
   });
 
-  c.bench_function("as_path_vs_path_new", |b| {
-    b.iter(|| {
-      for fixture in FIXTURES {
-        // Compare as_path() with Path::new() for baseline
-        let path1 = black_box(fixture.as_path());
-        let path2 = black_box(Path::new(fixture));
-        black_box((path1, path2));
+  group.bench_function("std_path_new", |bencher| {
+    bencher.iter(|| {
+      for case in black_box(ROLLDOWN_PATHS) {
+        black_box(Path::new(black_box(case.path)));
       }
-    })
+    });
   });
 
-  c.bench_function("as_path_chaining", |b| {
-    b.iter(|| {
-      for fixture in FIXTURES {
-        // Benchmark as_path followed by other operations
-        let normalized = black_box(fixture.as_path().normalize());
-        black_box(normalized);
-      }
-    })
-  });
+  group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark);
+criterion_group!(benches, bench_as_path);
 criterion_main!(benches);
