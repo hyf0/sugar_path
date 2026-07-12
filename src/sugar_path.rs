@@ -85,6 +85,24 @@ pub trait SugarPath: private::Sealed {
   /// A clean absolute receiver may be returned borrowed. A result that requires
   /// cwd resolution is owned.
   ///
+  /// Prefer [`SugarPath::absolutize_with`] when the base directory is known, so
+  /// the call does not depend on process cwd.
+  ///
+  /// # Examples
+  ///
+  /// Absolute inputs do not consult cwd:
+  ///
+  /// ```
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// #[cfg(target_family = "unix")]
+  /// assert_eq!(&*"/workspace/src".absolutize(), Path::new("/workspace/src"));
+  ///
+  /// #[cfg(target_family = "windows")]
+  /// assert_eq!(&*r"C:\workspace\src".absolutize(), Path::new(r"C:\workspace\src"));
+  /// ```
+  ///
   /// # Windows
   ///
   /// On Windows, drive-relative inputs such as `C:foo` use Windows' remembered
@@ -99,10 +117,27 @@ pub trait SugarPath: private::Sealed {
 
   /// Fallible form of [`SugarPath::absolutize`].
   ///
+  /// Absolute and otherwise cwd-independent inputs succeed without reading
+  /// process cwd state, so they do not fail merely because ambient cwd is
+  /// unavailable.
+  ///
   /// # Errors
   ///
   /// Returns the underlying [`io::Error`] if required ambient cwd state cannot
   /// be obtained or a Windows drive-relative path cannot be made absolute.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// #[cfg(target_family = "unix")]
+  /// assert_eq!(&*"/workspace".try_absolutize().unwrap(), Path::new("/workspace"));
+  ///
+  /// #[cfg(target_family = "windows")]
+  /// assert_eq!(&*r"C:\workspace".try_absolutize().unwrap(), Path::new(r"C:\workspace"));
+  /// ```
   fn try_absolutize(&self) -> io::Result<Cow<'_, Path>>;
 
   /// Resolves this path against an explicit current directory and normalizes it.
@@ -186,6 +221,25 @@ pub trait SugarPath: private::Sealed {
   /// Returns the underlying [`io::Error`] if either input requires ambient cwd
   /// state that cannot be obtained. Cwd-independent inputs do not produce this
   /// error merely because process cwd is unavailable.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// #[cfg(target_family = "unix")]
+  /// {
+  ///   let relative = Path::new("/workspace/src").try_relative("/workspace").unwrap();
+  ///   assert_eq!(&*relative, Path::new("src"));
+  /// }
+  ///
+  /// #[cfg(target_family = "windows")]
+  /// {
+  ///   let relative = Path::new(r"C:\workspace\src").try_relative(r"C:\workspace").unwrap();
+  ///   assert_eq!(&*relative, Path::new("src"));
+  /// }
+  /// ```
   fn try_relative(&self, base: impl AsRef<Path>) -> io::Result<Cow<'_, Path>>;
 
   /// Returns the lexical path from `base` to this receiver using `cwd` as the
@@ -256,8 +310,19 @@ pub trait SugarPath: private::Sealed {
 
   /// Converts native separators to `/`, returning `None` for invalid UTF-8.
   ///
-  /// This is the non-panicking strict conversion. It never replaces invalid
-  /// native encoding.
+  /// This is the non-panicking counterpart of [`SugarPath::to_slash`]. It never
+  /// inserts replacement characters: valid UTF-8 yields the slash-separated
+  /// string, and invalid native encoding yields `None`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::PathBuf;
+  /// use sugar_path::SugarPath;
+  ///
+  /// let path = PathBuf::from("src").join("lib.rs");
+  /// assert_eq!(path.try_to_slash().as_deref(), Some("src/lib.rs"));
+  /// ```
   fn try_to_slash(&self) -> Option<Cow<'_, str>>;
 
   /// Converts native separators to `/`, replacing invalid encoding with the
@@ -265,8 +330,19 @@ pub trait SugarPath: private::Sealed {
   ///
   /// Valid UTF-8 follows the same borrowing behavior as
   /// [`SugarPath::to_slash`]. Replacement is irreversible: a result containing
-  /// `U+FFFD` may not round-trip to the original native path. Use
-  /// [`SugarPath::try_to_slash`] when the original value must be preserved.
+  /// `U+FFFD` may not round-trip to the original native path. Prefer
+  /// [`SugarPath::to_slash`] when valid UTF-8 is an invariant, and
+  /// [`SugarPath::try_to_slash`] when the original native path must be preserved.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::PathBuf;
+  /// use sugar_path::SugarPath;
+  ///
+  /// let path = PathBuf::from("src").join("lib.rs");
+  /// assert_eq!(path.to_slash_lossy(), "src/lib.rs");
+  /// ```
   fn to_slash_lossy(&self) -> Cow<'_, str>;
 
   /// Views this value as a standard [`Path`] without allocating.

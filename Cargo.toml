@@ -5,14 +5,19 @@ resolver = "3"
 [package]
 name = "sugar_path"
 description = "Host-native lexical path manipulation with borrowed and owned-buffer APIs"
-keywords = ["path", "path-slash", "relative-path"]
+keywords = ["path", "path-slash", "relative-path", "normalize"]
 categories = ["filesystem"]
 repository = "https://github.com/hyf0/sugar_path"
+documentation = "https://docs.rs/sugar_path"
+readme = "README.md"
 version = "2.0.1"
 edition = "2024"
 license = "MIT"
 autobenches = false
 exclude = [".agents/", ".cargo/", ".github/", "AGENTS.md", "CLAUDE.md", "benchmarks/"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [features]
 # Cache the first successful ambient cwd lookup for processes that treat cwd as stable.

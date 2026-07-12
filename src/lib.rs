@@ -45,12 +45,14 @@
 //!
 //! The ambient [`SugarPath::absolutize`] and [`SugarPath::relative`] methods
 //! panic only when required ambient path resolution fails. Their `try_*` forms
-//! expose the same failure as [`std::io::Error`]. The `*_with` methods use an
-//! explicit cwd and never read ambient cwd state.
+//! expose the same failure as [`std::io::Error`]. Prefer the `*_with` methods
+//! when the base directory is known: they take an explicit cwd and never read
+//! ambient cwd state.
 //!
 //! Strict slash conversion panics for invalid Unicode, fallible conversion
 //! preserves failure without replacement, and only methods named `lossy`
-//! insert `U+FFFD`.
+//! insert `U+FFFD`. Each method page documents panic conditions, Windows edge
+//! cases, and when a [`Cow`](std::borrow::Cow) result may borrow.
 //!
 //! # Lexical and host-native semantics
 //!

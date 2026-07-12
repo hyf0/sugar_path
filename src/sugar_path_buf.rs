@@ -97,8 +97,18 @@ pub trait SugarPathBuf: private::Sealed {
   ///
   /// This conversion always returns a [`String`] and may reuse storage when the
   /// input is valid UTF-8. Replacement is irreversible: a result containing
-  /// `U+FFFD` may not round-trip to the original native path. Use
+  /// `U+FFFD` may not round-trip to the original native path. Prefer
+  /// [`SugarPathBuf::into_slash`] when valid UTF-8 is an invariant, and
   /// [`SugarPathBuf::try_into_slash`] when the original value must be preserved.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::PathBuf;
+  /// use sugar_path::SugarPathBuf;
+  ///
+  /// assert_eq!(PathBuf::from("src").join("lib.rs").into_slash_lossy(), "src/lib.rs");
+  /// ```
   #[must_use]
   fn into_slash_lossy(self) -> String;
 }
