@@ -888,8 +888,7 @@ fn try_relative_outcome<'a>(
     && classify_lexical_relative(base_path).is_some()
   {
     let cwd = try_get_current_dir()?;
-    if let Some(relative) =
-      try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref())
+    if let Some(relative) = try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref())
     {
       return Ok(RelativeOutcome::Native(relative));
     }
@@ -931,9 +930,7 @@ where
   // Same pure-lexical gate as ambient relative. try_relative_both_relative_via_cwd
   // already requires classification; do not treat every !has_root path as pure
   // relative (Windows drive-relative keeps absolutize_with / drive rules below).
-  if let Some(relative) =
-    try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref())
-  {
+  if let Some(relative) = try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref()) {
     return RelativeOutcome::Native(relative);
   }
 
