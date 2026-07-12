@@ -300,9 +300,9 @@ fn windows_linear_spill_preserves_a_drive_like_first_survivor() {
   for _ in 0..65 {
     deep.push("..");
   }
-  deep.push("C:foo");
-  deep.push(".");
-  deep.push("");
+  // Append raw spelling so `C:foo` stays a Normal component in the source;
+  // `PathBuf::push("C:foo")` would replace the path with a drive-relative one.
+  deep.as_mut_os_string().push(r"\C:foo\.\");
 
   let expected = Path::new(r".\C:foo\");
   assert_eq!(deep.normalize().as_os_str(), expected.as_os_str());
