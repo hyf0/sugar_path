@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [3.0.0](https://github.com/hyf0/sugar_path/compare/v2.0.1...v3.0.0) - 2026-07-12
+
+Breaking redesign of the public path APIs for borrowing, explicit cwd, and owned-buffer reuse ([#40](https://github.com/hyf0/sugar_path/pull/40)). Public docs and continuous CI allocation gates were aligned with that surface ([#42](https://github.com/hyf0/sugar_path/pull/42)). Performance baselines landed first as [PR #41](https://github.com/hyf0/sugar_path/pull/41).
+
 ### Added
 
 - Add `try_absolutize` and `try_relative` for callers that handle ambient current-directory errors.

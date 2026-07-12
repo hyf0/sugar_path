@@ -9,21 +9,10 @@ Host-native lexical path manipulation for Rust, as extension methods on standard
 
 SugarPath adds normalization, absolutization, relative paths, and slash conversion without a wrapper path type. Path-producing methods accept the full native [`Path`](https://doc.rust-lang.org/std/path/struct.Path.html) domain, including non-UTF-8 paths. Conversion to `str` or `String` makes the Unicode policy explicit.
 
-> **Release status:** `main` documents the upcoming 3.0 API. The latest published release is 2.0.1; use the [2.0.1 documentation](https://docs.rs/sugar_path/2.0.1/sugar_path/) for the current crates.io surface. Method links below point at the v3 source on `main` until rustdoc for 3.0 is published.
-
 ## Installation
-
-After version 3 is published:
 
 ```bash
 cargo add sugar_path@3
-```
-
-To try the unreleased API from `main`:
-
-```toml
-[dependencies]
-sugar_path = { git = "https://github.com/hyf0/sugar_path.git", branch = "main" }
 ```
 
 CI and local development use the toolchain pinned in [`rust-toolchain.toml`](https://github.com/hyf0/sugar_path/blob/main/rust-toolchain.toml). The crate does not currently declare a separate minimum supported Rust version.
@@ -66,7 +55,7 @@ Import [`SugarPath`] for borrowed operations on `Path`, `str`, and values that d
 
 `PathBuf` and `String` reach [`SugarPath`] methods through normal deref method lookup. Both traits are sealed extension-method namespaces; they are not intended for downstream implementations.
 
-For the full contract of each method — including panic conditions, Windows edge cases, and ownership — see the [crate documentation](https://docs.rs/sugar_path/latest/sugar_path/) (v2 today; v3 after publish) or the source linked below.
+For the full contract of each method — including panic conditions, Windows edge cases, and ownership — see the [crate documentation](https://docs.rs/sugar_path/latest/sugar_path/).
 
 ## Semantics
 
@@ -161,20 +150,20 @@ See the [changelog migration section](https://github.com/hyf0/sugar_path/blob/ma
 
 Licensed under the [MIT License](https://github.com/hyf0/sugar_path/blob/main/LICENSE).
 
-[`SugarPath`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`SugarPathBuf`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
-[`normalize()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`absolutize()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`try_absolutize()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`absolutize_with()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`relative()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`try_relative()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`relative_with()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`to_slash()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`try_to_slash()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`to_slash_lossy()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`as_path()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
-[`into_normalized()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
-[`into_slash()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
-[`try_into_slash()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
-[`into_slash_lossy()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
+[`SugarPath`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html
+[`SugarPathBuf`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html
+[`normalize()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.normalize
+[`absolutize()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.absolutize
+[`try_absolutize()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.try_absolutize
+[`absolutize_with()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.absolutize_with
+[`relative()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.relative
+[`try_relative()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.try_relative
+[`relative_with()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.relative_with
+[`to_slash()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.to_slash
+[`try_to_slash()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.try_to_slash
+[`to_slash_lossy()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.to_slash_lossy
+[`as_path()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.as_path
+[`into_normalized()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html#tymethod.into_normalized
+[`into_slash()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html#tymethod.into_slash
+[`try_into_slash()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html#tymethod.try_into_slash
+[`into_slash_lossy()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html#tymethod.into_slash_lossy
