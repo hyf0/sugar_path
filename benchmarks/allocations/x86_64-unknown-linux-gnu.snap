@@ -1,6 +1,6 @@
 # sugar_path allocation snapshot
 
-Platform: `macos/aarch64`; target environment: `other`; profile: `release`; configuration: `default`; native separator: `/`; measurement cwd: 45 encoded bytes / 5 components.
+Platform: `linux/x86_64`; target environment: `gnu`; profile: `release`; configuration: `cached_current_dir`; native separator: `/`; measurement cwd: 37 encoded bytes / 4 components.
 
 Each row measures one operation after allocation-capable setup and an untracked warm-up. Every row was reproduced identically 7 times.
 
@@ -45,9 +45,9 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | relative / relative inputs -> relative path | 1 | 0 | 0 |
 | relative / dotted relative inputs -> relative path | 1 | 0 | 0 |
 | relative / equal leading-parent inputs -> relative path | 1 | 0 | 0 |
-| relative / unequal leading-parent inputs -> relative path | 5 | 0 | 6 |
+| relative / unequal leading-parent inputs -> relative path | 5 | 0 | 4 |
 | relative / p99-depth equal leading-parent inputs -> relative path | 1 | 0 | 0 |
-| relative / p99-depth unequal leading-parent inputs -> relative path | 5 | 0 | 8 |
+| relative / p99-depth unequal leading-parent inputs -> relative path | 5 | 0 | 6 |
 | relative / current-directory spellings -> relative path | 0 | 0 | 0 |
 | relative / dotted slow path -> relative path | 1 | 0 | 0 |
 | relative / invalid-encoding absolute target -> relative path (setup excluded) | 3 | 0 | 3 |
@@ -117,9 +117,9 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | relative / relative inputs -> relative path | 31 | 0 |
 | relative / dotted relative inputs -> relative path | 23 | 0 |
 | relative / equal leading-parent inputs -> relative path | 23 | 0 |
-| relative / unequal leading-parent inputs -> relative path | 1169 | 372 |
+| relative / unequal leading-parent inputs -> relative path | 203 | 250 |
 | relative / p99-depth equal leading-parent inputs -> relative path | 18 | 0 |
-| relative / p99-depth unequal leading-parent inputs -> relative path | 1186 | 510 |
+| relative / p99-depth unequal leading-parent inputs -> relative path | 220 | 388 |
 | relative / current-directory spellings -> relative path | 0 | 0 |
 | relative / dotted slow path -> relative path | 31 | 0 |
 | relative / invalid-encoding absolute target -> relative path (setup excluded) | 93 | 112 |

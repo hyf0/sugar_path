@@ -1,186 +1,180 @@
 # sugar_path
 
+[![CI](https://github.com/hyf0/sugar_path/actions/workflows/test.yaml/badge.svg)](https://github.com/hyf0/sugar_path/actions/workflows/test.yaml)
 [![docs.rs](https://docs.rs/sugar_path/badge.svg)](https://docs.rs/sugar_path/latest/sugar_path/)
 [![crates.io](https://img.shields.io/crates/v/sugar_path.svg)](https://crates.io/crates/sugar_path)
-[![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/hyf0/sugar_path/blob/main/LICENSE)
 
-Ergonomic host-native path manipulation for Rust, with lexical normalization, absolutization, relative paths, slash conversion, borrowing, and owned-buffer reuse.
+Host-native lexical path manipulation for Rust, as extension methods on standard path and string types.
 
-SugarPath operates on the full standard-library `Path` domain, including non-UTF-8 native paths. It follows the compilation target's `std::path` parsing and separator rules; it does not parse Windows paths on Unix or POSIX paths on Windows.
+SugarPath adds normalization, absolutization, relative paths, and slash conversion without a wrapper path type. Path-producing methods accept the full native [`Path`](https://doc.rust-lang.org/std/path/struct.Path.html) domain, including non-UTF-8 paths. Conversion to `str` or `String` makes the Unicode policy explicit.
+
+> **Release status:** `main` documents the upcoming 3.0 API. The latest published release is 2.0.1; use the [2.0.1 documentation](https://docs.rs/sugar_path/2.0.1/sugar_path/) for the current crates.io surface. Method links below point at the v3 source on `main` until rustdoc for 3.0 is published.
+
+## Installation
+
+After version 3 is published:
+
+```bash
+cargo add sugar_path@3
+```
+
+To try the unreleased API from `main`:
+
+```toml
+[dependencies]
+sugar_path = { git = "https://github.com/hyf0/sugar_path.git", branch = "main" }
+```
+
+CI and local development use the toolchain pinned in [`rust-toolchain.toml`](https://github.com/hyf0/sugar_path/blob/main/rust-toolchain.toml). The crate does not currently declare a separate minimum supported Rust version.
 
 ## Quick start
 
-```bash
-cargo add sugar_path
+```rust
+use std::path::{Path, PathBuf};
+use sugar_path::{SugarPath, SugarPathBuf};
+
+let input = PathBuf::from("workspace")
+  .join("src")
+  .join("..")
+  .join("dist")
+  .join("assets");
+
+let normalized = input.normalize();
+let expected = Path::new("workspace").join("dist").join("assets");
+assert_eq!(&*normalized, expected);
+
+// The receiver is the target: target.relative(base).
+let relative = normalized.relative("workspace");
+assert_eq!(&*relative, Path::new("dist").join("assets"));
+
+let portable = relative.into_owned().into_slash();
+assert_eq!(portable, "dist/assets");
 ```
+
+## Choose an API
+
+Import [`SugarPath`] for borrowed operations on `Path`, `str`, and values that dereference to them. Import [`SugarPathBuf`] for consuming operations that may reuse an owned `PathBuf`.
+
+| Task | Borrowed / non-consuming | Consuming `PathBuf` | Notes |
+| --- | --- | --- | --- |
+| Normalize | [`normalize()`] | [`into_normalized()`] | `Cow<Path>` or `PathBuf` |
+| Make absolute | [`absolutize()`], [`try_absolutize()`], [`absolutize_with()`] | — | ambient panic · `io::Result` · explicit cwd |
+| Make relative | [`relative()`], [`try_relative()`], [`relative_with()`] | — | receiver is the target; returns `Cow<Path>` |
+| Convert separators | [`to_slash()`], [`try_to_slash()`], [`to_slash_lossy()`] | [`into_slash()`], [`try_into_slash()`], [`into_slash_lossy()`] | strict · recoverable · lossy Unicode |
+| View text as a path | [`as_path()`] | — | borrowed `&Path` |
+
+`PathBuf` and `String` reach [`SugarPath`] methods through normal deref method lookup. Both traits are sealed extension-method namespaces; they are not intended for downstream implementations.
+
+For the full contract of each method — including panic conditions, Windows edge cases, and ownership — see the [crate documentation](https://docs.rs/sugar_path/latest/sugar_path/) (v2 today; v3 after publish) or the source linked below.
+
+## Semantics
+
+### Lexical paths, not filesystem identity
+
+SugarPath rewrites path components only. It does not touch the filesystem, check existence, or resolve symbolic links. Removing `..` lexically is **not** a security boundary and does not prove filesystem containment. Use [`std::fs::canonicalize`](https://doc.rust-lang.org/std/fs/fn.canonicalize.html) when you need physical filesystem identity.
+
+[`normalize()`] removes `.` components and redundant native separators, resolves `..` against preceding normal components, and preserves one trailing separator on a non-root path. An empty path normalizes to `.`.
+
+### Host-native syntax
+
+Parsing always follows the compilation target's `std::path` rules. There is no caller-selected POSIX/Windows mode, and Windows syntax is not parsed on Unix. On Unix, `\` is an ordinary path byte. On Windows, `/` is normally a separator, but `/` inside a verbatim path component is literal and is left unchanged.
+
+### Relative paths
+
+Call [`relative()`] as `target.relative(base)`. Equal paths return an empty path. A target's non-root trailing separator is removed. A clean descendant may borrow its suffix from the target; upward, rewritten, or differently rooted results are owned.
+
+Ambient cwd is used only when the inputs do not determine the answer themselves. On Windows, paths on different drives, UNC shares, or namespace roots cannot be connected by a native relative path, so the normalized target is returned instead. Drive-relative, root-relative, verbatim, and unrepresentable-component cases are documented on the method.
+
+### Current directory and errors
+
+[`absolutize()`] and [`relative()`] are convenient ambient methods. They panic only when the calculation needs ambient path resolution and that resolution fails. [`try_absolutize()`] and [`try_relative()`] return the underlying `io::Error` instead.
+
+[`absolutize_with()`] and [`relative_with()`] take an explicit absolute cwd and never read process cwd. They accept a borrowed path or an owned `PathBuf`; an owned value may supply reusable result storage. An explicit cwd is validated only when the operation actually needs it.
+
+### Native encoding and slash conversion
+
+Slash conversion changes only the target platform's main separator. It does not normalize components or interpret foreign-platform syntax.
+
+| Policy | Borrowed | Consuming | Invalid native encoding |
+| --- | --- | --- | --- |
+| Strict | [`to_slash()`] | [`into_slash()`] | panics |
+| Recoverable | [`try_to_slash()`] | [`try_into_slash()`] | `None` or original `PathBuf` |
+| Lossy | [`to_slash_lossy()`] | [`into_slash_lossy()`] | inserts `U+FFFD`; may not round-trip |
+
+Use strict conversion when valid UTF-8 is an invariant, recoverable conversion when the native path must be kept, and lossy conversion only when replacement is intentional.
+
+## Ownership and allocation
+
+Borrowed `Cow` results never borrow from a `base` or `cwd` argument. They normally borrow from the receiver; normalization may also return the static current-directory path `.`. Already-normalized paths and clean relative descendants can avoid a result allocation. Call `.into_owned()` only when an owned `PathBuf` is required.
+
+[`SugarPathBuf`] consumes `PathBuf` where ownership can avoid a copy. Storage reuse is an optimization: do not rely on the result keeping the same address or capacity. For a final slash-separated `String`, the ordinary composition is:
 
 ```rust
 use std::path::Path;
 use sugar_path::{SugarPath, SugarPathBuf};
 
-assert_eq!("foo/./bar/../baz".normalize(), Path::new("foo/baz"));
-
-#[cfg(target_family = "unix")]
-let (target, base, expected) = ("/workspace/src/index.js", "/workspace", "src/index.js");
-#[cfg(target_family = "windows")]
-let (target, base, expected) = (r"C:\workspace\src\index.js", r"C:\workspace", r"src\index.js");
-
-let relative = Path::new(target).relative(base);
-assert_eq!(relative, Path::new(expected));
-
-let slash = relative.into_owned().into_slash();
-assert_eq!(slash, "src/index.js");
+let target = Path::new("workspace/src/lib.rs");
+let base = Path::new("workspace");
+let output = target.relative(base).into_owned().into_slash();
+assert_eq!(output, "src/lib.rs");
 ```
 
-## API overview
+Allocation-sensitive behavior is gated in CI on Linux and Windows via `cargo allocs` (always under `cached_current_dir`). See the [benchmark and allocation methodology](https://github.com/hyf0/sugar_path/blob/main/benchmarks/README.md).
 
-`SugarPath` is a sealed extension trait implemented directly for `Path` and `str`. `PathBuf`, `String`, and string wrappers use the same methods through normal deref method lookup. `SugarPathBuf` is a separate sealed trait for consuming operations that can reuse an owned `PathBuf` allocation.
+## Cargo features
 
-### Slash conversion
+Default features are empty.
 
-| Method | Behavior |
+| Feature | Purpose |
 | --- | --- |
-| [`as_path()`] | View a string as `&Path` without allocating |
-| [`to_slash()`] | Return a borrowed or owned slash-separated UTF-8 string; panic for invalid Unicode |
-| [`try_to_slash()`] | Return `None` for invalid Unicode without replacement |
-| [`to_slash_lossy()`] | Replace invalid encoding with `U+FFFD` |
-| [`into_slash()`] | Consume a valid-Unicode `PathBuf` and reuse its storage when possible; panic for invalid Unicode |
-| [`try_into_slash()`] | Return the original `PathBuf` when strict consuming conversion fails |
-| [`into_slash_lossy()`] | Consume a `PathBuf` and replace invalid encoding |
-
-```rust
-use std::path::Path;
-use sugar_path::SugarPath;
-
-#[cfg(target_family = "unix")]
-let path = Path::new("src/main.rs");
-#[cfg(target_family = "windows")]
-let path = Path::new(r"src\main.rs");
-
-assert_eq!(path.to_slash(), "src/main.rs");
-assert_eq!(path.try_to_slash().as_deref(), Some("src/main.rs"));
-```
-
-Use the strict methods when valid UTF-8 is part of the caller's contract. Use the `try_*` methods when invalid native encoding must be preserved, and use the explicitly lossy methods only when replacement is intended.
-
-[`as_path()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.as_path
-[`to_slash()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.to_slash
-[`try_to_slash()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.try_to_slash
-[`to_slash_lossy()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.to_slash_lossy
-[`into_slash()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html#tymethod.into_slash
-[`try_into_slash()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html#tymethod.try_into_slash
-[`into_slash_lossy()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html#tymethod.into_slash_lossy
-
-### Normalization
-
-[`normalize()`] resolves `.` and `..`, collapses redundant native separators, and preserves one trailing separator on a non-root path. It is lexical and does not inspect the filesystem or resolve symlinks. A clean result may borrow the receiver.
-
-[`into_normalized()`] performs the same operation on an owned `PathBuf` and reuses that allocation when possible.
-
-```rust
-use std::path::Path;
-use sugar_path::SugarPath;
-
-#[cfg(target_family = "unix")]
-assert_eq!(Path::new("foo//bar/").normalize(), Path::new("foo/bar/"));
-
-#[cfg(target_family = "windows")]
-assert_eq!(Path::new(r"foo\\bar\").normalize(), Path::new(r"foo\bar\"));
-```
-
-Unlike the former canonical-spelling contract, Windows normalization preserves the input spelling of a drive letter. Drive and root comparison remains ASCII case-insensitive. Under a Windows verbatim prefix, `/` is a literal character rather than a separator and is preserved exactly, following `std::path`. Normalization also keeps or inserts the minimal `.\` when its absence would cause a normal component such as `C:foo` to be reparsed as a drive prefix.
-
-[`normalize()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.normalize
-[`into_normalized()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPathBuf.html#tymethod.into_normalized
-
-### Absolutization and cwd
-
-[`absolutize()`] normalizes an absolute receiver directly or resolves a relative receiver against the process current directory. [`try_absolutize()`] exposes a current-directory lookup failure instead of panicking. Absolute inputs do not read or initialize cwd state.
-
-[`absolutize_with()`] accepts an explicit absolute cwd and never reads process cwd state. Pass `&Path` to borrow an existing cwd, or pass an owned `PathBuf` to transfer storage that may be reused; callers do not construct `Cow` explicitly.
-
-```rust
-use std::path::{Path, PathBuf};
-use sugar_path::SugarPath;
-
-#[cfg(target_family = "unix")]
-{
-  assert_eq!("src/main.rs".absolutize_with(Path::new("/workspace")), Path::new("/workspace/src/main.rs"));
-  assert_eq!("src/main.rs".absolutize_with(PathBuf::from("/workspace")), Path::new("/workspace/src/main.rs"));
-}
-
-#[cfg(target_family = "windows")]
-{
-  assert_eq!(r"src\main.rs".absolutize_with(Path::new(r"C:\workspace")), Path::new(r"C:\workspace\src\main.rs"));
-  assert_eq!(r"src\main.rs".absolutize_with(PathBuf::from(r"C:\workspace")), Path::new(r"C:\workspace\src\main.rs"));
-}
-```
-
-An explicit cwd is validated only when an operation needs it. A relative receiver with a non-absolute explicit cwd violates the contract and panics; an absolute receiver ignores an unused cwd.
-
-[`absolutize()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.absolutize
-[`try_absolutize()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.try_absolutize
-[`absolutize_with()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.absolutize_with
-
-### Relative paths
-
-[`relative()`] returns the lexical path from its argument to the receiver: call `target.relative(base)`. It returns `Cow<Path>` directly. A clean descendant may borrow its exact suffix from the target; rebuilt, upward, dirty, or differently rooted results are owned. Call `Cow::into_owned` only when a `PathBuf` is required.
-
-Equal paths return an empty path. Relative output follows Node-style resolution and removes a target's trailing separator even though `normalize()` preserves one.
-
-On Windows, different drives, UNC shares, or namespace roots return the normalized absolute target. SugarPath returns the normalized target when components cannot be represented as a standalone native relative `Path`, such as a verbatim component containing literal `/` or a leading component that would be parsed as a drive prefix. That result is normally absolute, but can remain root-relative or drive-relative when the inputs intentionally cancel a shared unknown context.
-
-[`try_relative()`] exposes ambient cwd errors. [`relative_with()`] accepts an explicit absolute cwd for relative inputs and never reads process cwd state.
-
-```rust
-use std::{borrow::Cow, path::Path};
-use sugar_path::SugarPath;
-
-#[cfg(target_family = "unix")]
-let (target, base, expected) = (Path::new("/workspace/src/index.js"), Path::new("/workspace"), Path::new("src/index.js"));
-#[cfg(target_family = "windows")]
-let (target, base, expected) = (Path::new(r"C:\workspace\src\index.js"), Path::new(r"C:\workspace"), Path::new(r"src\index.js"));
-
-let relative = target.relative(base);
-assert_eq!(relative, expected);
-assert!(matches!(relative, Cow::Borrowed(_)));
-assert_eq!(target.relative(target), Path::new(""));
-```
-
-[`relative()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.relative
-[`try_relative()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.try_relative
-[`relative_with()`]: https://docs.rs/sugar_path/latest/sugar_path/trait.SugarPath.html#tymethod.relative_with
-
-## Features
-
-| Feature | Description |
-| --- | --- |
-| `cached_current_dir` | Cache process cwd when an ambient operation first needs it, for applications that treat cwd as stable |
+| `cached_current_dir` | Lazily cache the first successful process cwd lookup for apps that treat cwd as process-lifetime state |
+| `codspeed` | Maintainer-only benchmark instrumentation; do not enable in applications |
 
 ```toml
 sugar_path = { version = "3", features = ["cached_current_dir"] }
 ```
 
-Explicit-cwd methods remain independent from the cache and should be used when cwd is externally managed or may change.
+With `cached_current_dir`, later `std::env::set_current_dir` calls are not observed. Absolute and other cwd-independent operations do not initialize the cache. Failed lookups are not cached. Explicit-cwd methods remain independent. Windows drive-relative paths still use authoritative per-drive cwd resolution.
 
-## Performance
+## Platform support
 
-- `Cow` results borrow clean normalized paths and canonical descendant relative suffixes.
-- Consuming `PathBuf` methods reuse owned storage when possible.
-- Separator-aware scans avoid allocating normalized copies merely to compare clean Windows paths.
-- `memchr`, inline component storage, and target-specific common-prefix scanning cover common Rolldown path shapes.
+CI tests Ubuntu, macOS, and Windows with default features and with all features. Semantics stay host-native:
 
-## Platform behavior
+- Unix paths keep arbitrary native bytes outside Unicode conversion.
+- Windows normalization emits native separators and preserves drive-letter spelling.
+- Windows drive, root, and normal-component comparison is ASCII case-insensitive, not general Unicode case folding.
+- Windows drive, UNC, verbatim, and device namespaces remain distinct roots.
 
-- Unix and Windows are tested in CI on Ubuntu, macOS, and Windows.
-- Path parsing and normalization always use host-native `std::path` semantics.
-- Windows drive and root comparison is ASCII case-insensitive, while normalization preserves drive-letter spelling.
-- Windows verbatim paths keep `std::path` separator rules: `/` is a literal character and is not rewritten as `\`.
-- Different Windows drives or UNC shares cannot be crossed by a relative path, so `relative` returns the normalized target.
-- A Windows target remains in normalized target form when its components cannot be represented by a standalone native relative `Path` without changing their meaning.
-- For an explicit cwd on another drive, `Path::new("C:foo").absolutize_with("D:\\cwd")` preserves the normalized drive-relative `C:foo`; it does not consult ambient state or fabricate `C:\\foo`.
-- `relative_with` relates two root-relative inputs without reading a drive and relates same-drive drive-relative inputs when their unknown shared context provably cancels; otherwise it returns the normalized target.
+## Upgrading from 2.x
+
+Version 3 is a breaking API revision:
+
+- [`relative()`] returns `Cow<Path>`; call `.into_owned()` where a `PathBuf` is required.
+- [`to_slash()`] is the strict direct-returning conversion; use [`try_to_slash()`] to preserve failure.
+- [`SugarPathBuf`] provides consuming normalization and slash conversion.
+- Explicit-cwd methods accept borrowed or owned cwd values directly.
+
+See the [changelog migration section](https://github.com/hyf0/sugar_path/blob/main/CHANGELOG.md#migration) for the full checklist.
 
 ## License
 
-MIT
+Licensed under the [MIT License](https://github.com/hyf0/sugar_path/blob/main/LICENSE).
+
+[`SugarPath`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`SugarPathBuf`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
+[`normalize()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`absolutize()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`try_absolutize()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`absolutize_with()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`relative()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`try_relative()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`relative_with()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`to_slash()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`try_to_slash()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`to_slash_lossy()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`as_path()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path.rs
+[`into_normalized()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
+[`into_slash()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
+[`try_into_slash()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs
+[`into_slash_lossy()`]: https://github.com/hyf0/sugar_path/blob/main/src/sugar_path_buf.rs

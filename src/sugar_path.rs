@@ -15,27 +15,64 @@ mod private {
 
 /// Lexical path operations over borrowed standard Rust path and string types.
 ///
-/// This trait is a sealed extension-method namespace implemented for [`Path`]
-/// and `str`. `PathBuf`, `String`, and other types that dereference to one of
-/// them use these methods through normal method lookup. Methods returning
-/// [`Cow`] may borrow from the receiver when its existing storage already
-/// contains the result; they never borrow from a `base` or `cwd` argument.
+/// Import this trait to call its methods on [`Path`] and `str`. [`PathBuf`],
+/// [`String`], and other types that dereference to one of those types use the
+/// methods through normal method lookup; they do not implement `SugarPath`
+/// themselves.
+///
+/// The trait is sealed because it is an extension-method namespace, not an
+/// abstraction for downstream path types. Generic APIs should accept a
+/// standard bound such as [`AsRef<Path>`], then call SugarPath methods on the
+/// resulting `&Path`.
+///
+/// Methods returning [`Cow`] may borrow from the receiver when its existing
+/// storage already contains the result. They never borrow from a `base` or
+/// `cwd` argument.
+///
+/// # Generic code
+///
+/// ```
+/// use std::path::{Path, PathBuf};
+/// use sugar_path::SugarPath;
+///
+/// fn normalized(path: impl AsRef<Path>) -> PathBuf {
+///   path.as_ref().normalize().into_owned()
+/// }
+///
+/// assert_eq!(normalized(PathBuf::from("src").join("..")), PathBuf::from("."));
+/// ```
 pub trait SugarPath: private::Sealed {
   /// Lexically normalizes this path in host-native syntax.
   ///
   /// This removes `.` components and redundant separators, resolves `..`
   /// against preceding normal components, and prevents a rooted path from
-  /// ascending above its root. It does not access the filesystem or resolve
-  /// symlinks. An empty path normalizes to `.`.
+  /// ascending above its root. An empty path normalizes to `.`. This operation
+  /// does not access the filesystem or resolve symlinks; use
+  /// [`std::fs::canonicalize`] when physical filesystem identity is required.
   ///
-  /// Following host-native Node `path.normalize` spelling, one trailing
-  /// separator is preserved when the input has one. On Windows, non-verbatim
-  /// separators are written as `\` and the input spelling of a drive letter is
-  /// preserved. Verbatim paths retain Rust's native rule that `/` is a literal
-  /// character rather than a separator. The minimal `.\` is kept or inserted
-  /// when its absence would reinterpret the first normal component as a prefix.
+  /// One trailing separator is preserved when the input has one. The returned
+  /// [`Cow`] borrows an already-normalized receiver when possible. A canonical
+  /// current-directory result may borrow the static `.` path; other results
+  /// that require a new buffer are owned.
   ///
-  /// The returned [`Cow`] borrows when no result buffer is required.
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::{Path, PathBuf};
+  /// use sugar_path::SugarPath;
+  ///
+  /// let input = PathBuf::from("workspace").join("src").join("..").join("dist");
+  /// let expected = Path::new("workspace").join("dist");
+  /// assert_eq!(&*input.normalize(), expected);
+  /// ```
+  ///
+  /// # Windows
+  ///
+  /// Non-verbatim separators are written as `\`, and the input spelling of a
+  /// drive letter is preserved. Verbatim paths retain Rust's native rule that
+  /// `/` is a literal character rather than a separator. The minimal `.\` is
+  /// kept or inserted when its absence would reinterpret the first normal
+  /// component as a prefix.
   fn normalize(&self) -> Cow<'_, Path>;
 
   /// Resolves this path against the process current directory and normalizes it.
@@ -44,6 +81,29 @@ pub trait SugarPath: private::Sealed {
   /// normalized without reading or initializing process cwd state. Other
   /// inputs use the process current directory; with the `cached_current_dir`
   /// feature, ordinary relative inputs use its lazily initialized snapshot.
+  ///
+  /// A clean absolute receiver may be returned borrowed. A result that requires
+  /// cwd resolution is owned.
+  ///
+  /// Prefer [`SugarPath::absolutize_with`] when the base directory is known, so
+  /// the call does not depend on process cwd.
+  ///
+  /// # Examples
+  ///
+  /// Absolute inputs do not consult cwd:
+  ///
+  /// ```
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// #[cfg(target_family = "unix")]
+  /// assert_eq!(&*"/workspace/src".absolutize(), Path::new("/workspace/src"));
+  ///
+  /// #[cfg(target_family = "windows")]
+  /// assert_eq!(&*r"C:\workspace\src".absolutize(), Path::new(r"C:\workspace\src"));
+  /// ```
+  ///
+  /// # Windows
   ///
   /// On Windows, drive-relative inputs such as `C:foo` use Windows' remembered
   /// current directory for that drive. This lookup is authoritative and is not
@@ -57,10 +117,27 @@ pub trait SugarPath: private::Sealed {
 
   /// Fallible form of [`SugarPath::absolutize`].
   ///
+  /// Absolute and otherwise cwd-independent inputs succeed without reading
+  /// process cwd state, so they do not fail merely because ambient cwd is
+  /// unavailable.
+  ///
   /// # Errors
   ///
   /// Returns the underlying [`io::Error`] if required ambient cwd state cannot
   /// be obtained or a Windows drive-relative path cannot be made absolute.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// #[cfg(target_family = "unix")]
+  /// assert_eq!(&*"/workspace".try_absolutize().unwrap(), Path::new("/workspace"));
+  ///
+  /// #[cfg(target_family = "windows")]
+  /// assert_eq!(&*r"C:\workspace".try_absolutize().unwrap(), Path::new(r"C:\workspace"));
+  /// ```
   fn try_absolutize(&self) -> io::Result<Cow<'_, Path>>;
 
   /// Resolves this path against an explicit current directory and normalizes it.
@@ -68,6 +145,22 @@ pub trait SugarPath: private::Sealed {
   /// This method never reads process cwd state. An absolute receiver ignores
   /// `cwd` and may be returned borrowed. A relative result that uses `cwd` is
   /// owned; an owned [`PathBuf`] passed as `cwd` may provide that result buffer.
+  /// The returned value never borrows from `cwd`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// #[cfg(target_family = "unix")]
+  /// assert_eq!("src/lib.rs".absolutize_with("/workspace"), Path::new("/workspace/src/lib.rs"));
+  ///
+  /// #[cfg(target_family = "windows")]
+  /// assert_eq!(r"src\lib.rs".absolutize_with(r"C:\workspace"), Path::new(r"C:\workspace\src\lib.rs"));
+  /// ```
+  ///
+  /// # Windows
   ///
   /// On Windows, an ordinary relative path uses `cwd`, and a root-relative path
   /// uses `cwd`'s drive or prefix. A drive-relative receiver such as `C:foo` is
@@ -90,7 +183,13 @@ pub trait SugarPath: private::Sealed {
   /// empty path, and result spelling never preserves a non-root target trailing
   /// separator.
   ///
-  /// On Windows, drive and path components compare with ASCII case ignored.
+  /// A result already present in the receiver, commonly a descendant suffix
+  /// with trailing separators excluded, may be borrowed. Results that must be
+  /// rebuilt, including upward and differently rooted results, are owned.
+  ///
+  /// # Windows
+  ///
+  /// Drive and path components compare with ASCII case ignored.
   /// Different drive, UNC share, or namespace roots return the normalized
   /// absolute target because a relative path cannot cross those roots. The
   /// normalized target is also returned when its remaining components cannot
@@ -99,10 +198,6 @@ pub trait SugarPath: private::Sealed {
   /// would be reparsed as a Windows prefix. This target is normally absolute
   /// after resolution, but can remain root-relative or drive-relative when the
   /// unknown shared context deliberately cancels.
-  ///
-  /// A result already present in the receiver, commonly a descendant suffix
-  /// with trailing separators excluded, may be borrowed. Results that must be
-  /// rebuilt, including upward and differently rooted results, are owned.
   ///
   /// # Examples
   ///
@@ -126,6 +221,25 @@ pub trait SugarPath: private::Sealed {
   /// Returns the underlying [`io::Error`] if either input requires ambient cwd
   /// state that cannot be obtained. Cwd-independent inputs do not produce this
   /// error merely because process cwd is unavailable.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// #[cfg(target_family = "unix")]
+  /// {
+  ///   let relative = Path::new("/workspace/src").try_relative("/workspace").unwrap();
+  ///   assert_eq!(&*relative, Path::new("src"));
+  /// }
+  ///
+  /// #[cfg(target_family = "windows")]
+  /// {
+  ///   let relative = Path::new(r"C:\workspace\src").try_relative(r"C:\workspace").unwrap();
+  ///   assert_eq!(&*relative, Path::new("src"));
+  /// }
+  /// ```
   fn try_relative(&self, base: impl AsRef<Path>) -> io::Result<Cow<'_, Path>>;
 
   /// Returns the lexical path from `base` to this receiver using `cwd` as the
@@ -133,7 +247,23 @@ pub trait SugarPath: private::Sealed {
   ///
   /// This method never reads process cwd state. If the result is independent
   /// of cwd, `cwd` is neither inspected nor validated. Otherwise `cwd` resolves
-  /// both inputs using [`SugarPath::absolutize_with`].
+  /// both inputs using [`SugarPath::absolutize_with`]. The returned value may
+  /// borrow only from this receiver, never from `base` or `cwd`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// #[cfg(target_family = "unix")]
+  /// assert_eq!("src/lib.rs".relative_with("/workspace", "/workspace"), Path::new("src/lib.rs"));
+  ///
+  /// #[cfg(target_family = "windows")]
+  /// assert_eq!(r"src\lib.rs".relative_with(r"C:\workspace", r"C:\workspace"), Path::new(r"src\lib.rs"));
+  /// ```
+  ///
+  /// # Windows
   ///
   /// On Windows, a single explicit cwd may not contain the remembered cwd for
   /// another drive. Two root-relative inputs cancel their shared unknown drive.
@@ -161,6 +291,16 @@ pub trait SugarPath: private::Sealed {
   /// string when the path is valid UTF-8 and no separator replacement needs
   /// a new buffer.
   ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::PathBuf;
+  /// use sugar_path::SugarPath;
+  ///
+  /// let path = PathBuf::from("src").join("lib.rs");
+  /// assert_eq!(path.to_slash(), "src/lib.rs");
+  /// ```
+  ///
   /// # Panics
   ///
   /// Panics if this native path is not valid UTF-8. Use
@@ -170,17 +310,53 @@ pub trait SugarPath: private::Sealed {
 
   /// Converts native separators to `/`, returning `None` for invalid UTF-8.
   ///
-  /// This is the non-panicking strict conversion. It never replaces invalid
-  /// native encoding.
+  /// This is the non-panicking counterpart of [`SugarPath::to_slash`]. It never
+  /// inserts replacement characters: valid UTF-8 yields the slash-separated
+  /// string, and invalid native encoding yields `None`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::PathBuf;
+  /// use sugar_path::SugarPath;
+  ///
+  /// let path = PathBuf::from("src").join("lib.rs");
+  /// assert_eq!(path.try_to_slash().as_deref(), Some("src/lib.rs"));
+  /// ```
   fn try_to_slash(&self) -> Option<Cow<'_, str>>;
 
   /// Converts native separators to `/`, replacing invalid encoding with the
   /// Unicode replacement character.
   ///
   /// Valid UTF-8 follows the same borrowing behavior as
-  /// [`SugarPath::to_slash`].
+  /// [`SugarPath::to_slash`]. Replacement is irreversible: a result containing
+  /// `U+FFFD` may not round-trip to the original native path. Prefer
+  /// [`SugarPath::to_slash`] when valid UTF-8 is an invariant, and
+  /// [`SugarPath::try_to_slash`] when the original native path must be preserved.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::PathBuf;
+  /// use sugar_path::SugarPath;
+  ///
+  /// let path = PathBuf::from("src").join("lib.rs");
+  /// assert_eq!(path.to_slash_lossy(), "src/lib.rs");
+  /// ```
   fn to_slash_lossy(&self) -> Cow<'_, str>;
 
   /// Views this value as a standard [`Path`] without allocating.
+  ///
+  /// This is primarily useful for `str` and [`String`] receivers. It performs
+  /// no normalization, encoding conversion, or filesystem access.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use std::path::PathBuf;
+  /// use sugar_path::SugarPath;
+  ///
+  /// assert_eq!("src".as_path().join("lib.rs"), PathBuf::from("src").join("lib.rs"));
+  /// ```
   fn as_path(&self) -> &Path;
 }

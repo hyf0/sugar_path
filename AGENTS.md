@@ -19,6 +19,9 @@ cargo test --test normalize unix      # run specific test fn
 # Lint (CI runs with -D warnings — zero warnings allowed)
 cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
+# Documentation (CI treats rustdoc warnings as errors)
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --workspace --all-features --no-deps
+
 # Format (2-space indent, enforced in CI)
 cargo fmt --all --check     # check only
 cargo fmt --all             # fix
@@ -28,19 +31,22 @@ cargo bench --locked --bench normalize
 cargo bench --locked --bench absolutize -- absolutize_with
 cargo bench --locked --features cached_current_dir  # match Rolldown
 
-# Allocation baseline for the current target
-cargo allocs --check benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-default.snap
-cargo allocs-rolldown --check benchmarks/allocations/$(rustc -vV | sed -n 's|host: ||p')-rolldown.snap
+# Allocation baseline (CI gates: Linux + Windows snaps; always cached_current_dir)
+cargo allocs --check benchmarks/allocations/x86_64-unknown-linux-gnu.snap   # on Linux CI host
+cargo allocs --check benchmarks/allocations/x86_64-pc-windows-msvc.snap     # on Windows CI host
+# Local print for the current host (not a continuous gate unless the target matches):
+cargo allocs
 ```
 
 ## Architecture
 
 Two extension traits over standard path types: `SugarPath` adds borrowed operations to `Path` and `str`/`String`; `SugarPathBuf` adds consuming operations that can reuse an owned `PathBuf`.
 
-- **`src/sugar_path.rs`** — Trait definition with doc examples
+- **`README.md` / `src/lib.rs`** — Task-oriented user entry point and docs.rs crate landing page
+- **`src/sugar_path.rs`** — Borrowed trait definition and authoritative method contracts
 - **`src/sugar_path_buf.rs`** — Consuming `PathBuf` trait definition with doc examples
 - **`src/impl_sugar_path.rs`** — All implementations. Two impl blocks: one for `Path`, one for `str`; `String` and other string-like values use normal deref method lookup. Contains `normalize_inner()`, `needs_normalization()`, `relative_str()` and helper functions
-- **`src/utils.rs`** — `get_current_dir()` helper for `absolutize()`
+- **`src/utils.rs`** — `try_get_current_dir()` helper for ambient `absolutize` / `relative` (returns `io::Result`; optionally caches under `cached_current_dir`)
 
 Key patterns:
 - `Cow<'_, Path>` return types to avoid allocation when the input is already clean

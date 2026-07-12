@@ -3,6 +3,9 @@ name: Test
 on:
   pull_request:
   push:
+    # Feature-branch pushes already run via pull_request; only re-check main after merge.
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       allocation_snapshot_mode:
@@ -17,11 +20,33 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash
 
 jobs:
+  # Host-independent checks once; do not pay for them on every OS matrix cell.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          components: rustfmt
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --workspace --all-features --no-deps
+
   test:
     name: Test ${{ matrix.os }}
     strategy:
@@ -35,16 +60,17 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0
-          components: rustfmt, clippy
-      - name: Lint
-        run: |
-          cargo fmt --all --check
-          cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+          components: clippy
+      # Clippy stays on each OS: platform-gated imports only fail under that target.
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Test default features
         run: cargo test --locked --workspace
       - name: Test all features
         run: cargo test --locked --workspace --all-features
 
+  # Continuous gate: Linux + Windows only. The tracker always measures the
+  # cached_current_dir production config via `cargo allocs`.
   allocations:
     name: Allocation snapshot ${{ matrix.os }}
     strategy:
@@ -52,9 +78,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            snapshot: x86_64-unknown-linux-gnu
+            snapshot: x86_64-unknown-linux-gnu.snap
           - os: windows-latest
-            snapshot: x86_64-pc-windows-msvc
+            snapshot: x86_64-pc-windows-msvc.snap
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -62,23 +88,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0
-      - name: Check committed allocation snapshots
+      - name: Check committed allocation snapshot
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.allocation_snapshot_mode != 'generate' }}
-        run: |
-          cargo allocs --check benchmarks/allocations/${{ matrix.snapshot }}-default.snap
-          cargo allocs-rolldown --check benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
-      - name: Generate allocation snapshots
+        run: cargo allocs --check benchmarks/allocations/${{ matrix.snapshot }}
+      - name: Generate allocation snapshot
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' }}
         run: |
           mkdir -p benchmarks/allocations
-          cargo allocs --write benchmarks/allocations/${{ matrix.snapshot }}-default.snap
-          cargo allocs-rolldown --write benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
-      - name: Upload generated allocation snapshots
+          cargo allocs --write benchmarks/allocations/${{ matrix.snapshot }}
+      - name: Upload generated allocation snapshot
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' }}
         uses: actions/upload-artifact@v4
         with:
-          name: allocation-snapshots-${{ matrix.snapshot }}
-          path: |
-            benchmarks/allocations/${{ matrix.snapshot }}-default.snap
-            benchmarks/allocations/${{ matrix.snapshot }}-rolldown.snap
+          name: allocation-snapshot-${{ matrix.snapshot }}
+          path: benchmarks/allocations/${{ matrix.snapshot }}
           if-no-files-found: error

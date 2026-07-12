@@ -1568,12 +1568,11 @@ fn render_snapshot(measurements: &[Measurement], cwd_shape: CwdShape) -> String 
   writeln!(output, "# sugar_path allocation snapshot\n").unwrap();
   writeln!(
     output,
-    "Platform: `{}/{}`; target environment: `{}`; profile: `{}`; configuration: `{}`; native separator: `{}`; measurement cwd: {} encoded bytes / {} components.\n",
+    "Platform: `{}/{}`; target environment: `{}`; profile: `{}`; configuration: `cached_current_dir`; native separator: `{}`; measurement cwd: {} encoded bytes / {} components.\n",
     std::env::consts::OS,
     std::env::consts::ARCH,
     TARGET_ENVIRONMENT,
     if cfg!(debug_assertions) { "debug" } else { "release" },
-    if cfg!(feature = "rolldown") { "Rolldown (cached_current_dir)" } else { "default" },
     std::path::MAIN_SEPARATOR,
     cwd_shape.encoded_bytes,
     cwd_shape.components
