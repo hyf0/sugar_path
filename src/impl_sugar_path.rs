@@ -755,7 +755,13 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
   // `component.as_os_str().as_encoded_bytes()` (or Windows prefix
   // server/share/device encodings of the same kind); the only invented bytes
   // are ASCII (`MAIN_SEPARATOR`, `.`, `..`, and fixed ASCII prefix spellings
-  // such as `\\?\` / `\\.\`). No network/file/arbitrary `Vec<u8>` is admitted.
+  // such as `\\?\` / `\\.\`). Arena ranges cover whole source slices, and no
+  // serialized encoded-byte buffer is accepted directly.
+  //
+  // Windows also requires that raw WTF-8 concatenation not create a
+  // lead-surrogate/trail-surrogate pair across chunk boundaries. Every boundary
+  // between chunks that can contain surrogates has an ASCII separator. The only
+  // prefix/component joins without one are disk prefixes, which end in ASCII `:`.
   PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) })
 }
 
