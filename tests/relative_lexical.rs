@@ -148,6 +148,32 @@ fn deep_unequal_parent_miss_uses_the_cwd_dependent_fallback() {
   assert_eq!(target.relative(base).as_os_str(), expected.as_os_str());
 }
 
+/// Ambient `relative` for Windows drive-relative inputs must use `try_absolutize`
+/// (per-drive `std::path::absolute`), not the pure-lexical shared-cwd stack path.
+/// Drive-relative paths are `!has_root()` but carry a Prefix — treating every
+/// `!has_root` pair as pure relative regressed the different-drive allocation row.
+#[cfg(windows)]
+#[test]
+fn ambient_drive_relative_relative_matches_try_absolutize_composition() {
+  for (target, base) in [
+    (r"C:dist\assets\index.js", r"C:dist\chunks"),
+    (r"D:dist\assets\index.js", r"C:dist\chunks"),
+    (r"C:dist\assets\index.js", r"D:dist\chunks"),
+  ] {
+    let target_path = Path::new(target);
+    let base_path = Path::new(base);
+    let actual = target_path.relative(base_path);
+    let resolved_base = base_path.try_absolutize().expect("absolutize base").into_owned();
+    let resolved_target = target_path.try_absolutize().expect("absolutize target").into_owned();
+    let expected = resolved_target.relative(resolved_base.as_path());
+    assert_eq!(
+      actual.as_os_str(),
+      expected.as_os_str(),
+      "target {target:?}, base {base:?}: ambient relative must match try_absolutize composition",
+    );
+  }
+}
+
 #[cfg(windows)]
 #[test]
 fn windows_explicit_cwd_preserves_or_cancels_drive_relative_context() {

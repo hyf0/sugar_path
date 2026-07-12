@@ -880,12 +880,16 @@ fn try_relative_outcome<'a>(
     return Ok(outcome);
   }
 
-  // Pure relative pairs that missed the cwd-independent lexical hit still share
-  // one ambient cwd. Resolve both as component stacks so unequal leading
-  // parents do not clone cwd twice and rebuild two intermediate absolutes.
-  if !target_path.has_root() && !base_path.has_root() {
+  // Pure lexical relative pairs only (no prefix/root). Windows drive-relative
+  // inputs are `!has_root()` but carry a Prefix — they must keep try_absolutize
+  // so ambient relative uses per-drive `std::path::absolute`, not absolutize_with
+  // against the process cwd.
+  if classify_lexical_relative(target_path).is_some()
+    && classify_lexical_relative(base_path).is_some()
+  {
     let cwd = try_get_current_dir()?;
-    if let Some(relative) = try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref())
+    if let Some(relative) =
+      try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref())
     {
       return Ok(RelativeOutcome::Native(relative));
     }
@@ -894,7 +898,8 @@ fn try_relative_outcome<'a>(
     return Ok(relative_from_resolved(base, target));
   }
 
-  // Slow path: avoid current_dir() for already-absolute paths.
+  // Slow path: avoid current_dir() for already-absolute paths. Windows
+  // drive-relative receivers still take try_absolutize here.
   let base = if base_path.is_absolute() {
     normalize_for_resolution(base_path).into_owned()
   } else {
@@ -923,9 +928,11 @@ where
 
   assert!(cwd.as_ref().is_absolute(), "explicit current directory must be absolute");
 
-  if !target_path.has_root()
-    && !base_path.has_root()
-    && let Some(relative) = try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref())
+  // Same pure-lexical gate as ambient relative. try_relative_both_relative_via_cwd
+  // already requires classification; do not treat every !has_root path as pure
+  // relative (Windows drive-relative keeps absolutize_with / drive rules below).
+  if let Some(relative) =
+    try_relative_both_relative_via_cwd(target_path, base_path, cwd.as_ref())
   {
     return RelativeOutcome::Native(relative);
   }
