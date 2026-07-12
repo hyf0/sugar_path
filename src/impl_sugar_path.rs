@@ -739,7 +739,15 @@ fn normalize_owned_path_buf_reusing(path: PathBuf, trailing: TrailingSeparator) 
     }
   }
 
-  // SAFETY: buf is built from OsStr component bytes plus ASCII separators / dots.
+  // SAFETY: `OsString::from_encoded_bytes_unchecked` requires bytes that are a
+  // mixture of validated UTF-8 and `OsStr::as_encoded_bytes` from this Rust
+  // version/target, split only at non-empty UTF-8 boundaries.
+  //
+  // `buf` satisfies that: every non-ASCII sequence is copied from
+  // `component.as_os_str().as_encoded_bytes()` (or Windows prefix
+  // server/share/device encodings of the same kind); the only invented bytes
+  // are ASCII (`MAIN_SEPARATOR`, `.`, `..`, and fixed ASCII prefix spellings
+  // such as `\\?\` / `\\.\`). No network/file/arbitrary `Vec<u8>` is admitted.
   PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) })
 }
 
@@ -1689,10 +1697,10 @@ fn normalize_inner<'a>(
     buf.push(sep_byte);
   }
 
-  // SAFETY: `buf` was built entirely from:
-  // - encoded bytes of OsStr components (valid platform encoding)
-  // - ASCII separator bytes and ASCII '.' characters
-  // This preserves the encoding invariants required by OsString.
+  // SAFETY: same contract as `normalize_owned_path_buf_reusing` above.
+  // `buf` is only extended with `Component`/`OsStr` `as_encoded_bytes()` slices
+  // and ASCII separators / `.` / fixed ASCII Windows prefix bytes — never
+  // arbitrary non-UTF-8 invented by this function.
   Cow::Owned(PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(buf) }))
 }
 
