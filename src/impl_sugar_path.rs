@@ -1058,6 +1058,11 @@ fn relative_without_cwd<'a>(
   None
 }
 
+/// Build a relative outcome from already-resolved absolute paths.
+///
+/// Takes [`Cow`] so Windows branches that must return the absolute target can
+/// move an owned buffer instead of cloning it (`into_owned` is free on
+/// [`Cow::Owned`]). Clean borrowed bases stay borrowed for the common-prefix scan.
 fn relative_from_resolved(base: Cow<'_, Path>, target: Cow<'_, Path>) -> RelativeOutcome<'static> {
   #[cfg(target_family = "windows")]
   if windows_paths_have_different_prefixes(base.as_ref(), target.as_ref()) {
@@ -1156,8 +1161,10 @@ fn try_relative_outcome<'a>(
   }
 
   // Slow path: avoid current_dir() for already-absolute paths. Windows
-  // drive-relative receivers still take try_absolutize here. Retain borrowed
-  // normalized inputs until the result actually needs an owned path.
+  // drive-relative receivers still take try_absolutize here. Keep Cow so a
+  // clean absolute base is not cloned solely to compute relative against a
+  // dirty/invalid target, and so Windows different-prefix returns can move an
+  // already-owned absolute target without a second clone.
   let base = if base_path.is_absolute() {
     normalize_for_resolution(base_path)
   } else {
@@ -1169,7 +1176,7 @@ fn try_relative_outcome<'a>(
     target_path.try_absolutize()?
   };
 
-  Ok(relative_from_resolved(base.as_ref(), target.as_ref()))
+  Ok(relative_from_resolved(base, target))
 }
 
 fn relative_outcome_with<'a, P>(
@@ -1208,7 +1215,7 @@ where
     return RelativeOutcome::Native(normalize_for_resolution(target.as_ref()).into_owned());
   }
 
-  relative_from_resolved(base.as_ref(), target.as_ref())
+  relative_from_resolved(base, target)
 }
 
 impl SugarPath for Path {
