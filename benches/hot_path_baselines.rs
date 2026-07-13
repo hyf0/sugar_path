@@ -35,18 +35,18 @@ fn bench_hot_path_baselines(criterion: &mut Criterion) {
   {
     let non_utf8 = invalid_unicode_path();
     let non_utf8_name = non_utf8.file_name().expect("non-UTF-8 fixture has a file name").to_owned();
-    let mut dirty_before_non_utf8 = non_utf8.clone();
-    dirty_before_non_utf8.pop();
-    dirty_before_non_utf8.push(".");
-    dirty_before_non_utf8.push(&non_utf8_name);
+    let mut non_utf8_dirty_before = non_utf8.clone();
+    non_utf8_dirty_before.pop();
+    non_utf8_dirty_before.push(".");
+    non_utf8_dirty_before.push(&non_utf8_name);
     let mut non_utf8_before_dirty_late = non_utf8.clone();
     non_utf8_before_dirty_late.push("late");
     non_utf8_before_dirty_late.push(".");
     non_utf8_before_dirty_late.push("file.js");
     let mut group = criterion.benchmark_group("normalize/non_utf8");
-    group.throughput(Throughput::Bytes(dirty_before_non_utf8.as_os_str().len() as u64));
-    group.bench_function("dirty_before_non_utf8", |bencher| {
-      bencher.iter(|| black_box(black_box(dirty_before_non_utf8.as_path()).normalize()));
+    group.throughput(Throughput::Bytes(non_utf8_dirty_before.as_os_str().len() as u64));
+    group.bench_function("non_utf8_dirty_before", |bencher| {
+      bencher.iter(|| black_box(black_box(non_utf8_dirty_before.as_path()).normalize()));
     });
     group.throughput(Throughput::Bytes(non_utf8_before_dirty_late.as_os_str().len() as u64));
     group.bench_function("non_utf8_before_dirty_late", |bencher| {
