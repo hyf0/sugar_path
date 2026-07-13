@@ -72,7 +72,9 @@ fn replace_forward_separator_in_owned(string: String) -> String {
 #[cfg(test)]
 #[test]
 fn owned_forward_separator_replacement_is_exact_and_reuses_storage() {
-  for expected in ["", "mod.rs", r"..\src\mod.rs", r"模块\src\任务.rs"] {
+  assert_eq!(replace_forward_separator_in_owned(String::new()), "");
+
+  for expected in ["mod.rs", r"..\src\mod.rs", r"模块\src\任务.rs"] {
     let input = expected.replace('\\', "/");
     let allocation = (input.as_ptr(), input.capacity());
     let output = replace_forward_separator_in_owned(input);
