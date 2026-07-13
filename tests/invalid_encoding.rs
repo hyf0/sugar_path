@@ -39,6 +39,7 @@ mod unix {
     );
   }
 
+  #[cfg(not(target_os = "cygwin"))]
   #[test]
   fn clean_invalid_bytes_borrow_while_dirty_bytes_rebuild() {
     let clean = path(b"/workspace/segment-\x80/file");
