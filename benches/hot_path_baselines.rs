@@ -9,7 +9,7 @@ mod support;
 #[cfg(all(target_family = "unix", not(target_os = "cygwin")))]
 use support::workloads::RELATIVE_CASES;
 #[cfg(any(unix, windows))]
-use support::workloads::{ROLLDOWN_ROOT, invalid_unicode_path};
+use support::workloads::{ROLLDOWN_ROOT, non_utf8_path};
 
 fn bench_hot_path_baselines(criterion: &mut Criterion) {
   #[cfg(not(target_family = "windows"))]
@@ -33,33 +33,33 @@ fn bench_hot_path_baselines(criterion: &mut Criterion) {
 
   #[cfg(any(unix, windows))]
   {
-    let invalid = invalid_unicode_path();
-    let invalid_name = invalid.file_name().expect("invalid fixture has a file name").to_owned();
-    let mut dirty_before_invalid = invalid.clone();
-    dirty_before_invalid.pop();
-    dirty_before_invalid.push(".");
-    dirty_before_invalid.push(&invalid_name);
-    let mut invalid_before_dirty_late = invalid.clone();
-    invalid_before_dirty_late.push("late");
-    invalid_before_dirty_late.push(".");
-    invalid_before_dirty_late.push("file.js");
-    let mut group = criterion.benchmark_group("normalize/invalid_encoding");
-    group.throughput(Throughput::Bytes(dirty_before_invalid.as_os_str().len() as u64));
-    group.bench_function("dirty_before_invalid", |bencher| {
-      bencher.iter(|| black_box(black_box(dirty_before_invalid.as_path()).normalize()));
+    let non_utf8 = non_utf8_path();
+    let non_utf8_name = non_utf8.file_name().expect("non-UTF-8 fixture has a file name").to_owned();
+    let mut dirty_before_non_utf8 = non_utf8.clone();
+    dirty_before_non_utf8.pop();
+    dirty_before_non_utf8.push(".");
+    dirty_before_non_utf8.push(&non_utf8_name);
+    let mut non_utf8_before_dirty_late = non_utf8.clone();
+    non_utf8_before_dirty_late.push("late");
+    non_utf8_before_dirty_late.push(".");
+    non_utf8_before_dirty_late.push("file.js");
+    let mut group = criterion.benchmark_group("normalize/non_utf8");
+    group.throughput(Throughput::Bytes(dirty_before_non_utf8.as_os_str().len() as u64));
+    group.bench_function("dirty_before_non_utf8", |bencher| {
+      bencher.iter(|| black_box(black_box(dirty_before_non_utf8.as_path()).normalize()));
     });
-    group.throughput(Throughput::Bytes(invalid_before_dirty_late.as_os_str().len() as u64));
-    group.bench_function("invalid_before_dirty_late", |bencher| {
-      bencher.iter(|| black_box(black_box(invalid_before_dirty_late.as_path()).normalize()));
+    group.throughput(Throughput::Bytes(non_utf8_before_dirty_late.as_os_str().len() as u64));
+    group.bench_function("non_utf8_before_dirty_late", |bencher| {
+      bencher.iter(|| black_box(black_box(non_utf8_before_dirty_late.as_path()).normalize()));
     });
     group.finish();
 
     let base = Path::new(ROLLDOWN_ROOT);
     let mut group = criterion.benchmark_group("relative/slow_path");
     group
-      .throughput(Throughput::Bytes((invalid.as_os_str().len() + base.as_os_str().len()) as u64));
-    group.bench_function("invalid_encoding_absolute", |bencher| {
-      bencher.iter(|| black_box(invalid.as_path()).relative(black_box(base)));
+      .throughput(Throughput::Bytes((non_utf8.as_os_str().len() + base.as_os_str().len()) as u64));
+    group.bench_function("non_utf8_absolute_target", |bencher| {
+      bencher.iter(|| black_box(non_utf8.as_path()).relative(black_box(base)));
     });
     group.finish();
   }

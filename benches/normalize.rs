@@ -7,7 +7,7 @@ use sugar_path::{SugarPath, SugarPathBuf};
 mod support;
 
 #[cfg(any(unix, windows))]
-use support::workloads::invalid_unicode_path;
+use support::workloads::non_utf8_path;
 use support::workloads::{
   CANONICAL_LEADING_PARENTS, CURRENT_DIRECTORY_CASES, DIRTY_PATHS, LEADING_PARENT_SCAN_CASES,
   PathCase, ROLLDOWN_PATHS,
@@ -49,11 +49,11 @@ fn bench_normalize(criterion: &mut Criterion) {
 
   #[cfg(any(unix, windows))]
   {
-    let invalid = invalid_unicode_path();
-    let mut group = criterion.benchmark_group("normalize/invalid_encoding");
-    group.throughput(Throughput::Bytes(invalid.as_os_str().len() as u64));
-    group.bench_function("lexically_clean", |bencher| {
-      bencher.iter(|| black_box(black_box(invalid.as_path()).normalize()));
+    let non_utf8 = non_utf8_path();
+    let mut group = criterion.benchmark_group("normalize/non_utf8");
+    group.throughput(Throughput::Bytes(non_utf8.as_os_str().len() as u64));
+    group.bench_function("non_utf8_lexically_clean", |bencher| {
+      bencher.iter(|| black_box(black_box(non_utf8.as_path()).normalize()));
     });
     group.finish();
   }
