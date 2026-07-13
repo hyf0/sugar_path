@@ -23,6 +23,7 @@ Use this map to load only the context that bears on the work in front of you. Al
 - Dependency or fast-path changes → [Performance dependencies](./technology-stack.md#performance-dependencies).
 - Rust edition, toolchain policy, or the CI operating-system matrix → [Pinned stable Rust and standard path semantics](./technology-stack.md#pinned-stable-rust-and-standard-path-semantics) and [Platform behavior stays behind compile-time branches](./architecture.md#platform-behavior-stays-behind-compile-time-branches).
 - Benchmarks, `Cargo.toml` benchmark targets, or CodSpeed → [Benchmarks guard user-facing properties](./technology-stack.md#benchmarks-guard-user-facing-properties).
+- Performance optimization scope or a non-UTF-8 performance tradeoff → [UTF-8 is the default performance target](./performance-strategy.md#utf-8-is-the-default-performance-target).
 - Historical Windows-GNU Docker/Wine reproduction → [Local Docker validation is opt-in](./conventions.md#local-docker-validation-is-opt-in) and [Windows GNU local execution gate](../../benchmarks/windows-gnu.md#local-execution-gate).
 - Performance strategy, baseline changes, Rolldown workloads, allocation work, or API performance → [Performance strategy](./performance-strategy.md).
 - Test fixtures or assertions → [Testing conventions](./conventions.md).

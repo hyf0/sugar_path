@@ -89,14 +89,14 @@ fn bench_to_slash(criterion: &mut Criterion) {
 
   #[cfg(any(unix, windows))]
   {
-    let invalid = invalid_unicode_path();
-    let mut group = criterion.benchmark_group("slash/invalid_unicode");
-    group.throughput(Throughput::Bytes(invalid.as_os_str().len() as u64));
-    group.bench_function("borrowed_receiver/fallible_result", |bencher| {
-      bencher.iter(|| black_box(black_box(invalid.as_path()).try_to_slash()));
+    let non_utf8 = invalid_unicode_path();
+    let mut group = criterion.benchmark_group("slash/non_utf8_native");
+    group.throughput(Throughput::Bytes(non_utf8.as_os_str().len() as u64));
+    group.bench_function("borrowed_receiver/non_utf8_strict", |bencher| {
+      bencher.iter(|| black_box(black_box(non_utf8.as_path()).try_to_slash()));
     });
-    group.bench_function("borrowed_receiver/lossy_result", |bencher| {
-      bencher.iter(|| black_box(black_box(invalid.as_path()).to_slash_lossy()));
+    group.bench_function("borrowed_native/non_utf8_lossy", |bencher| {
+      bencher.iter(|| black_box(black_box(non_utf8.as_path()).to_slash_lossy()));
     });
     group.finish();
   }

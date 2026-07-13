@@ -49,11 +49,11 @@ fn bench_normalize(criterion: &mut Criterion) {
 
   #[cfg(any(unix, windows))]
   {
-    let invalid = invalid_unicode_path();
-    let mut group = criterion.benchmark_group("normalize/invalid_encoding");
-    group.throughput(Throughput::Bytes(invalid.as_os_str().len() as u64));
-    group.bench_function("lexically_clean", |bencher| {
-      bencher.iter(|| black_box(black_box(invalid.as_path()).normalize()));
+    let non_utf8 = invalid_unicode_path();
+    let mut group = criterion.benchmark_group("normalize/non_utf8");
+    group.throughput(Throughput::Bytes(non_utf8.as_os_str().len() as u64));
+    group.bench_function("non_utf8_lexically_clean", |bencher| {
+      bencher.iter(|| black_box(black_box(non_utf8.as_path()).normalize()));
     });
     group.finish();
   }

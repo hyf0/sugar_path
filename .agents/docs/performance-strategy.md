@@ -6,6 +6,12 @@ Rolldown is SugarPath's primary consumer. At Rolldown commit [`b9823050b`](https
 
 The representative corpus therefore starts from Rolldown's public tracked-path distribution and includes its composed operations. Branch-specific microbenchmarks remain separate so a weighted aggregate cannot hide a slow path. Rolldown traces record only aggregate path shape and branch data, never private raw paths or reversible hashes.
 
+## UTF-8 is the default performance target
+
+[VOUCHED @hyf0 2026-07-13]
+
+The default workload for performance design and acceptance is paths that `Path::to_str()` can represent losslessly as valid UTF-8. This is a performance-evaluation assumption, not a precondition of the public API. An optimization is valid and valuable when it measurably improves that workload even if native non-UTF-8 inputs become slower, provided those inputs still preserve their exact bytes or wide units and all public results and errors remain correct, panic-free, and memory-safe. Non-UTF-8 latency is not a default merge gate: keep correctness coverage and retain a focused benchmark when a known tradeoff needs to stay visible, but do not add complexity or sacrifice a demonstrated UTF-8 gain solely to equalize a non-UTF-8 microbenchmark without consumer evidence.
+
 ## Pre-scan before allocation
 
 Prefer a cheap classification scan when it can prove that an operation may borrow its input, reuse an owned buffer, or skip building an intermediate result. Rolldown's tracked repository paths are short enough for this to be plausible: the recorded relative-path distribution is 75 encoded bytes at p50, 110 at p95, and 177 at the maximum. A scan over that range usually stays in cache, while crossing the allocator boundary has fixed bookkeeping and ownership costs.
@@ -61,7 +67,7 @@ The pre-baseline implementation had costs that the recorded suite needed to pres
 
 ## Baseline protocol
 
-Pin the Rust toolchain and Cargo lock, keep workload names stable, regenerate target-specific allocation snapshots, and run formatting, Clippy, default/all-feature tests, benchmark smoke tests, and link checks. The accepted baseline must land on main before implementation behavior changes, and the optimization branch must be compared from that main commit rather than from an earlier private checkpoint. CodSpeed data lives outside the repository and becomes useful only after that commit is uploaded. A checked-in snapshot provides evidence only for the API, target, and execution environment that actually produced it; the historical Windows-GNU files do not substitute for a native Windows CI run of the final API.
+Pin the Rust toolchain and Cargo lock, keep workload names stable, regenerate target-specific allocation snapshots, and run formatting, Clippy, default/all-feature tests, benchmark smoke tests, and link checks. A new timed benchmark case and the implementation it measures must never enter through one PR. Open a behavior-neutral benchmark-baseline PR first and put a new baseline family in its own benchmark binary so fat LTO cannot change the layout of existing binaries. Then base the implementation PR on that PR's branch so CodSpeed executes the new case on both sides and reports the implementation delta; after the baseline merges, rebase or retarget the implementation PR onto the merged baseline without collapsing the two review steps. CodSpeed data lives outside the repository and becomes useful only after the benchmark commit is uploaded. A checked-in snapshot provides evidence only for the API, target, and execution environment that actually produced it; the historical Windows-GNU files do not substitute for a native Windows CI run of the final API.
 
 The timed benchmark allocator is mimalloc 0.1.64 to match Rolldown. Do not enable `target-cpu=native` in shared baselines: it breaks cross-run comparability and can silently select a different SIMD path. If explicit SIMD is evaluated later, give each fixed target-feature configuration its own benchmark identity.
 
