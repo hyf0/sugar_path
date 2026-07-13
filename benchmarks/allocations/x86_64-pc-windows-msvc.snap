@@ -16,7 +16,7 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / collapsing input -> normalized path | 1 | 0 | 0 |
 | normalize / noncanonical leading parents -> normalized path | 1 | 0 | 0 |
 | normalize / canonical leading parents -> normalized path | 0 | 0 | 0 |
-| normalize / clean invalid encoding -> normalized path | 1 | 0 | 0 |
+| normalize / clean invalid encoding -> normalized path | 0 | 0 | 0 |
 | normalize / owned clean input via borrowed receiver -> PathBuf | 1 | 0 | 0 |
 | normalize / owned clean input via owned receiver -> PathBuf | 0 | 0 | 0 |
 | normalize / owned dirty input via borrowed receiver -> PathBuf | 1 | 0 | 0 |
@@ -26,7 +26,7 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / owned collapsing input via borrowed receiver -> PathBuf | 2 | 0 | 0 |
 | normalize / owned collapsing input via owned receiver -> PathBuf | 1 | 0 | 0 |
 | normalize / owned invalid input via borrowed receiver -> PathBuf | 1 | 0 | 0 |
-| normalize / owned invalid input via owned receiver -> PathBuf | 1 | 0 | 0 |
+| normalize / owned invalid input via owned receiver -> PathBuf | 0 | 0 | 0 |
 | pipeline / dirty join via borrowed receiver -> PathBuf | 2 | 0 | 2 |
 | pipeline / dirty join via owned receiver -> PathBuf | 2 | 0 | 2 |
 | pipeline / dirty join via borrowed receiver -> String | 3 | 0 | 2 |
@@ -52,13 +52,13 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | relative / p99-depth equal leading-parent inputs -> relative path | 1 | 0 | 0 |
 | relative / p99-depth unequal leading-parent inputs -> relative path | 1 | 0 | 0 |
 | relative / current-directory spellings -> relative path | 0 | 0 | 0 |
-| relative / dotted slow path -> relative path | 4 | 0 | 0 |
-| relative / invalid-encoding absolute target -> relative path (setup excluded) | 3 | 0 | 0 |
+| relative / dotted slow path -> relative path | 3 | 0 | 0 |
+| relative / invalid-encoding absolute target -> relative path (setup excluded) | 1 | 0 | 0 |
 | relative / invalid-encoding relative target -> relative path (setup excluded) | 1 | 0 | 0 |
-| Windows / absolute forward-slash inputs -> relative path | 2 | 0 | 0 |
+| Windows / absolute forward-slash inputs -> relative path | 1 | 0 | 0 |
 | Windows / same drive-relative prefix -> relative path | 1 | 0 | 0 |
 | Windows / different drive-relative prefix -> relative path | 4 | 0 | 0 |
-| Windows / root-relative inputs -> relative path | 3 | 0 | 0 |
+| Windows / root-relative inputs -> relative path | 1 | 0 | 0 |
 | Windows / ordinary UNC same share -> relative path | 1 | 0 | 0 |
 | Windows / ordinary UNC different share -> relative path | 1 | 0 | 0 |
 | Windows / verbatim UNC same share -> relative path | 1 | 0 | 0 |
@@ -101,7 +101,7 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / collapsing input -> normalized path | 6 | 0 |
 | normalize / noncanonical leading parents -> normalized path | 51 | 0 |
 | normalize / canonical leading parents -> normalized path | 0 | 0 |
-| normalize / clean invalid encoding -> normalized path | 70 | 0 |
+| normalize / clean invalid encoding -> normalized path | 0 | 0 |
 | normalize / owned clean input via borrowed receiver -> PathBuf | 58 | 0 |
 | normalize / owned clean input via owned receiver -> PathBuf | 0 | 0 |
 | normalize / owned dirty input via borrowed receiver -> PathBuf | 58 | 0 |
@@ -111,7 +111,7 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | normalize / owned collapsing input via borrowed receiver -> PathBuf | 7 | 0 |
 | normalize / owned collapsing input via owned receiver -> PathBuf | 6 | 0 |
 | normalize / owned invalid input via borrowed receiver -> PathBuf | 70 | 0 |
-| normalize / owned invalid input via owned receiver -> PathBuf | 70 | 0 |
+| normalize / owned invalid input via owned receiver -> PathBuf | 0 | 0 |
 | pipeline / dirty join via borrowed receiver -> PathBuf | 100 | 126 |
 | pipeline / dirty join via owned receiver -> PathBuf | 100 | 126 |
 | pipeline / dirty join via borrowed receiver -> String | 170 | 126 |
@@ -133,17 +133,17 @@ Each row measures one operation after allocation-capable setup and an untracked 
 | relative / relative inputs -> relative path | 31 | 0 |
 | relative / dotted relative inputs -> relative path | 23 | 0 |
 | relative / equal leading-parent inputs -> relative path | 23 | 0 |
-| relative / unequal leading-parent inputs -> relative path | 383 | 276 |
+| relative / unequal leading-parent inputs -> relative path | 60 | 0 |
 | relative / p99-depth equal leading-parent inputs -> relative path | 18 | 0 |
-| relative / p99-depth unequal leading-parent inputs -> relative path | 427 | 276 |
+| relative / p99-depth unequal leading-parent inputs -> relative path | 87 | 0 |
 | relative / current-directory spellings -> relative path | 0 | 0 |
-| relative / dotted slow path -> relative path | 195 | 0 |
-| relative / invalid-encoding absolute target -> relative path (setup excluded) | 139 | 0 |
+| relative / dotted slow path -> relative path | 164 | 0 |
+| relative / invalid-encoding absolute target -> relative path (setup excluded) | 48 | 0 |
 | relative / invalid-encoding relative target -> relative path (setup excluded) | 24 | 0 |
-| Windows / absolute forward-slash inputs -> relative path | 56 | 0 |
+| Windows / absolute forward-slash inputs -> relative path | 28 | 0 |
 | Windows / same drive-relative prefix -> relative path | 18 | 0 |
 | Windows / different drive-relative prefix -> relative path | 178 | 0 |
-| Windows / root-relative inputs -> relative path | 51 | 0 |
+| Windows / root-relative inputs -> relative path | 18 | 0 |
 | Windows / ordinary UNC same share -> relative path | 27 | 0 |
 | Windows / ordinary UNC different share -> relative path | 36 | 0 |
 | Windows / verbatim UNC same share -> relative path | 27 | 0 |

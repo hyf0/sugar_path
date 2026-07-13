@@ -40,7 +40,7 @@ impl<'a> RelativeOutcome<'a> {
       Self::Slash(path) => {
         #[cfg(target_family = "windows")]
         {
-          PathBuf::from(path.replace('/', "\\"))
+          PathBuf::from(replace_forward_separator_in_owned(path))
         }
         #[cfg(not(target_family = "windows"))]
         {
@@ -55,6 +55,31 @@ impl<'a> RelativeOutcome<'a> {
       Self::BorrowedNative(path) => Cow::Borrowed(path),
       outcome => Cow::Owned(outcome.into_path_buf()),
     }
+  }
+}
+
+#[cfg(any(test, target_family = "windows"))]
+fn replace_forward_separator_in_owned(string: String) -> String {
+  let mut bytes = string.into_bytes();
+  for byte in &mut bytes {
+    if *byte == b'/' {
+      *byte = b'\\';
+    }
+  }
+  String::from_utf8(bytes).expect("replacing ASCII path separators preserves UTF-8")
+}
+
+#[cfg(test)]
+#[test]
+fn owned_forward_separator_replacement_is_exact_and_reuses_storage() {
+  assert_eq!(replace_forward_separator_in_owned(String::new()), "");
+
+  for expected in ["mod.rs", r"..\src\mod.rs", r"模块\src\任务.rs"] {
+    let input = expected.replace('\\', "/");
+    let allocation = (input.as_ptr(), input.capacity());
+    let output = replace_forward_separator_in_owned(input);
+    assert_eq!(output, expected);
+    assert_eq!((output.as_ptr(), output.capacity()), allocation);
   }
 }
 
@@ -764,8 +789,8 @@ fn try_relative_windows_root_lexically(target: &Path, base: &Path) -> Option<Pat
     return None;
   }
 
-  let target = normalize_for_resolution(target).into_owned();
-  let base = normalize_for_resolution(base).into_owned();
+  let target = normalize_for_resolution(target);
+  let base = normalize_for_resolution(base);
   Some(relative_from_resolved(base, target).into_path_buf())
 }
 
@@ -818,13 +843,13 @@ fn relative_without_cwd<'a>(
   None
 }
 
-fn relative_from_resolved<'a>(base: PathBuf, target: PathBuf) -> RelativeOutcome<'a> {
+fn relative_from_resolved(base: Cow<'_, Path>, target: Cow<'_, Path>) -> RelativeOutcome<'static> {
   #[cfg(target_family = "windows")]
-  if windows_paths_have_different_prefixes(&base, &target) {
-    return RelativeOutcome::Native(target);
+  if windows_paths_have_different_prefixes(base.as_ref(), target.as_ref()) {
+    return RelativeOutcome::Native(target.into_owned());
   }
 
-  if base == target {
+  if base.as_ref() == target.as_ref() {
     return RelativeOutcome::Native(PathBuf::new());
   }
 
@@ -861,7 +886,7 @@ fn relative_from_resolved<'a>(base: PathBuf, target: PathBuf) -> RelativeOutcome
           )
         }))
     {
-      return RelativeOutcome::Native(target);
+      return RelativeOutcome::Native(target.into_owned());
     }
 
     let suffix_count = target_suffix.clone().count();
@@ -910,22 +935,23 @@ fn try_relative_outcome<'a>(
     ) {
       return Ok(RelativeOutcome::Native(relative));
     }
-    let base = base_path.absolutize_with(cwd.as_ref()).into_owned();
-    let target = target_path.absolutize_with(cwd.as_ref()).into_owned();
+    let base = base_path.absolutize_with(cwd.as_ref());
+    let target = target_path.absolutize_with(cwd.as_ref());
     return Ok(relative_from_resolved(base, target));
   }
 
   // Slow path: avoid current_dir() for already-absolute paths. Windows
-  // drive-relative receivers still take try_absolutize here.
+  // drive-relative receivers still take try_absolutize here. Retain borrowed
+  // normalized inputs until the result actually needs an owned path.
   let base = if base_path.is_absolute() {
-    normalize_for_resolution(base_path).into_owned()
+    normalize_for_resolution(base_path)
   } else {
-    base_path.try_absolutize()?.into_owned()
+    base_path.try_absolutize()?
   };
   let target = if target_path.is_absolute() {
-    normalize_for_resolution(target_path).into_owned()
+    normalize_for_resolution(target_path)
   } else {
-    target_path.try_absolutize()?.into_owned()
+    target_path.try_absolutize()?
   };
 
   Ok(relative_from_resolved(base, target))
@@ -953,18 +979,18 @@ where
   }
 
   let base = if base_path.is_absolute() {
-    normalize_for_resolution(base_path).into_owned()
+    normalize_for_resolution(base_path)
   } else {
-    base_path.absolutize_with(cwd.as_ref()).into_owned()
+    base_path.absolutize_with(cwd.as_ref())
   };
   let target = if target_path.is_absolute() {
-    normalize_for_resolution(target_path).into_owned()
+    normalize_for_resolution(target_path)
   } else {
-    target_path.absolutize_with(cwd).into_owned()
+    target_path.absolutize_with(cwd)
   };
 
   if !base.is_absolute() || !target.is_absolute() {
-    return RelativeOutcome::Native(normalize_for_resolution(&target).into_owned());
+    return RelativeOutcome::Native(normalize_for_resolution(target.as_ref()).into_owned());
   }
 
   relative_from_resolved(base, target)
@@ -1068,58 +1094,68 @@ impl SugarPath for Path {
 
 /// Check whether a path needs normalization. Returns `false` for already-clean
 /// paths, allowing `normalize()` to return `Cow::Borrowed` with zero allocation.
-#[inline]
+#[inline(never)]
 #[cfg(not(target_family = "windows"))]
 fn needs_normalization(path: &Path, trailing: TrailingSeparator) -> bool {
+  // Keep Cygwin's existing Unicode validation path. Its native path parser is
+  // not covered by the non-Windows encoded-byte fast path.
+  #[cfg(target_os = "cygwin")]
   let Some(s) = path.to_str() else {
     return true;
   };
+  #[cfg(target_os = "cygwin")]
   let bytes = s.as_bytes();
+  #[cfg(not(target_os = "cygwin"))]
+  let bytes = path.as_os_str().as_encoded_bytes();
+  // OsStr's encoded representation is self-synchronizing and preserves ASCII,
+  // so native separators and dot components cannot hide inside another unit.
+  let separator = std::path::MAIN_SEPARATOR as u8;
   if bytes.is_empty() {
     return true;
   }
-  if bytes == b"." || (trailing == TrailingSeparator::Preserve && bytes == b"./") {
+  if bytes == b"." || (trailing == TrailingSeparator::Preserve && bytes == [b'.', separator]) {
     return false;
   }
   // A leading `.` needs normalization. A leading run of `..` can be clean when
   // every remaining component is normal (`...` and `.foo` are normal names).
   if bytes[0] == b'.' {
-    if bytes.len() == 1 || bytes[1] == b'/' {
+    if bytes.len() == 1 || bytes[1] == separator {
       return true;
     }
-    if bytes[1] == b'.' && (bytes.len() == 2 || bytes[2] == b'/') {
+    if bytes[1] == b'.' && (bytes.len() == 2 || bytes[2] == separator) {
       return !leading_parent_path_is_normalized(
         bytes,
-        b'/',
+        separator,
         trailing == TrailingSeparator::Preserve,
       );
     }
   }
-  // Trailing `/` (unless path is exactly `/`)
-  if trailing == TrailingSeparator::Strip && bytes.len() > 1 && bytes[bytes.len() - 1] == b'/' {
+  // Trailing separator (unless the path is exactly the root separator).
+  if trailing == TrailingSeparator::Strip && bytes.len() > 1 && bytes[bytes.len() - 1] == separator
+  {
     return true;
   }
-  // memchr scan for `//`, `/.`, `/..`
+  // Scan for duplicate separators and dot components.
   let mut offset = 0;
-  while let Some(pos) = memchr(b'/', &bytes[offset..]) {
+  while let Some(pos) = memchr(separator, &bytes[offset..]) {
     let slash = offset + pos;
     let next = slash + 1;
     if next < bytes.len() {
       let b = bytes[next];
       // `//` — consecutive slashes
-      if b == b'/' {
+      if b == separator {
         return true;
       }
       // `/.` — could be `/.` or `/..`
       if b == b'.' {
         let after_dot = next + 1;
         // "/." at end or "/./"
-        if after_dot >= bytes.len() || bytes[after_dot] == b'/' {
+        if after_dot >= bytes.len() || bytes[after_dot] == separator {
           return true;
         }
         // "/.." at end or "/../"
         if bytes[after_dot] == b'.'
-          && (after_dot + 1 >= bytes.len() || bytes[after_dot + 1] == b'/')
+          && (after_dot + 1 >= bytes.len() || bytes[after_dot + 1] == separator)
         {
           return true;
         }
@@ -1131,13 +1167,12 @@ fn needs_normalization(path: &Path, trailing: TrailingSeparator) -> bool {
 }
 
 /// Check whether a path needs normalization (Windows variant).
-#[inline]
+#[inline(never)]
 #[cfg(target_family = "windows")]
 fn needs_normalization(path: &Path, trailing: TrailingSeparator) -> bool {
-  let Some(s) = path.to_str() else {
-    return true;
-  };
-  let bytes = s.as_bytes();
+  // OsStr's encoded representation is self-synchronizing and preserves ASCII,
+  // so separators and dot components cannot hide inside an encoded unit.
+  let bytes = path.as_os_str().as_encoded_bytes();
   if bytes.is_empty() {
     return true;
   }
@@ -1863,5 +1898,76 @@ fn replace_main_separator(input: &str) -> Option<String> {
     Some(buf)
   } else {
     None
+  }
+}
+
+#[cfg(test)]
+mod normalization_classifier_tests {
+  use super::*;
+
+  fn normalize_without_classifier(path: &Path, trailing: TrailingSeparator) -> Cow<'_, Path> {
+    normalize_inner(
+      path.components().peekable(),
+      path.as_os_str().len(),
+      trailing == TrailingSeparator::Preserve && has_trailing_separator(path),
+      {
+        #[cfg(target_family = "windows")]
+        {
+          windows_drive_spelling(path)
+        }
+        #[cfg(not(target_family = "windows"))]
+        {
+          None
+        }
+      },
+    )
+  }
+
+  fn assert_classifier_matches_full_normalizer(path: &Path) {
+    for trailing in [TrailingSeparator::Preserve, TrailingSeparator::Strip] {
+      let classified = normalize_path(path, trailing);
+      let rebuilt = normalize_without_classifier(path, trailing);
+      assert_eq!(
+        classified.as_os_str(),
+        rebuilt.as_os_str(),
+        "classifier skipped required work for {path:?}",
+      );
+    }
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn unix_classifier_matches_full_normalizer_for_short_arbitrary_bytes() {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+    const ALPHABET: &[u8] = &[b'a', b'.', b'/', 0x80, 0xff];
+    for len in 0..=6 {
+      for mut ordinal in 0..ALPHABET.len().pow(len as u32) {
+        let mut bytes = vec![0; len];
+        for byte in &mut bytes {
+          *byte = ALPHABET[ordinal % ALPHABET.len()];
+          ordinal /= ALPHABET.len();
+        }
+        assert_classifier_matches_full_normalizer(Path::new(&OsString::from_vec(bytes)));
+      }
+    }
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn windows_classifier_matches_full_normalizer_for_short_arbitrary_wide_units() {
+    use std::{ffi::OsString, os::windows::ffi::OsStringExt};
+
+    const ALPHABET: &[u16] = &[b'a' as u16, b'.' as u16, b'\\' as u16, b'/' as u16, 0xd800];
+    for len in 0..=6 {
+      for mut ordinal in 0..ALPHABET.len().pow(len as u32) {
+        let mut units = vec![0; len];
+        for unit in &mut units {
+          *unit = ALPHABET[ordinal % ALPHABET.len()];
+          ordinal /= ALPHABET.len();
+        }
+        assert_classifier_matches_full_normalizer(Path::new(&OsString::from_wide(&units)));
+      }
+    }
   }
 }
