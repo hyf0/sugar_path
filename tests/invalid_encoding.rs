@@ -40,6 +40,21 @@ mod unix {
   }
 
   #[test]
+  fn clean_invalid_bytes_borrow_while_dirty_bytes_rebuild() {
+    let clean = path(b"/workspace/segment-\x80/file");
+    let Cow::Borrowed(normalized) = clean.normalize() else {
+      panic!("clean invalid encoding should borrow");
+    };
+    assert!(std::ptr::eq(normalized, clean.as_path()));
+
+    let dirty = path(b"/workspace/segment-\x80/./file");
+    let Cow::Owned(normalized) = dirty.normalize() else {
+      panic!("dirty invalid encoding should rebuild");
+    };
+    assert_bytes(&normalized, b"/workspace/segment-\x80/file");
+  }
+
+  #[test]
   fn relative_fallback_preserves_an_invalid_normal_component() {
     let target = path(b"/base/segment-\x80/file");
     let base = path(b"/base");
@@ -162,6 +177,21 @@ mod windows {
       "segment-",
       r"\tail\",
     );
+  }
+
+  #[test]
+  fn clean_invalid_wide_encoding_borrows_while_dirty_encoding_rebuilds() {
+    let clean = invalid_path(r"C:\workspace\segment-", r"\file");
+    let Cow::Borrowed(normalized) = clean.normalize() else {
+      panic!("clean invalid encoding should borrow");
+    };
+    assert!(std::ptr::eq(normalized, clean.as_path()));
+
+    let dirty = invalid_path(r"C:\workspace\segment-", r"\.\file");
+    let Cow::Owned(normalized) = dirty.normalize() else {
+      panic!("dirty invalid encoding should rebuild");
+    };
+    assert_wide(&normalized, &wide_with_invalid(r"C:\workspace\segment-", r"\file"));
   }
 
   #[test]
