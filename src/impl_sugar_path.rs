@@ -40,7 +40,7 @@ impl<'a> RelativeOutcome<'a> {
       Self::Slash(path) => {
         #[cfg(target_family = "windows")]
         {
-          PathBuf::from(path.replace('/', "\\"))
+          PathBuf::from(replace_forward_separator_in_owned(path))
         }
         #[cfg(not(target_family = "windows"))]
         {
@@ -55,6 +55,29 @@ impl<'a> RelativeOutcome<'a> {
       Self::BorrowedNative(path) => Cow::Borrowed(path),
       outcome => Cow::Owned(outcome.into_path_buf()),
     }
+  }
+}
+
+#[cfg(any(test, target_family = "windows"))]
+fn replace_forward_separator_in_owned(string: String) -> String {
+  let mut bytes = string.into_bytes();
+  for byte in &mut bytes {
+    if *byte == b'/' {
+      *byte = b'\\';
+    }
+  }
+  String::from_utf8(bytes).expect("replacing ASCII path separators preserves UTF-8")
+}
+
+#[cfg(test)]
+#[test]
+fn owned_forward_separator_replacement_is_exact_and_reuses_storage() {
+  for expected in ["", "mod.rs", r"..\src\mod.rs", r"模块\src\任务.rs"] {
+    let input = expected.replace('\\', "/");
+    let allocation = (input.as_ptr(), input.capacity());
+    let output = replace_forward_separator_in_owned(input);
+    assert_eq!(output, expected);
+    assert_eq!((output.as_ptr(), output.capacity()), allocation);
   }
 }
 
