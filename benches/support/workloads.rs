@@ -19,7 +19,7 @@ pub struct RelativeCase {
 }
 
 #[cfg(unix)]
-pub fn non_utf8_path() -> PathBuf {
+pub fn invalid_unicode_path() -> PathBuf {
   use std::os::unix::ffi::OsStringExt;
 
   PathBuf::from(OsString::from_vec(
@@ -28,7 +28,7 @@ pub fn non_utf8_path() -> PathBuf {
 }
 
 #[cfg(windows)]
-pub fn non_utf8_path() -> PathBuf {
+pub fn invalid_unicode_path() -> PathBuf {
   use std::os::windows::ffi::OsStringExt;
 
   let mut units: Vec<u16> =

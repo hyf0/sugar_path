@@ -10,7 +10,7 @@ use support::workloads::ROLLDOWN_PATHS;
 #[cfg(target_family = "windows")]
 use support::workloads::WINDOWS_SLASH_CASES;
 #[cfg(any(unix, windows))]
-use support::workloads::non_utf8_path;
+use support::workloads::invalid_unicode_path;
 
 fn bench_to_slash(criterion: &mut Criterion) {
   let mut group =
@@ -89,13 +89,13 @@ fn bench_to_slash(criterion: &mut Criterion) {
 
   #[cfg(any(unix, windows))]
   {
-    let non_utf8 = non_utf8_path();
-    let mut group = criterion.benchmark_group("slash/non_utf8");
+    let non_utf8 = invalid_unicode_path();
+    let mut group = criterion.benchmark_group("slash/non_utf8_native");
     group.throughput(Throughput::Bytes(non_utf8.as_os_str().len() as u64));
-    group.bench_function("borrowed_receiver/non_utf8_fallible_result", |bencher| {
+    group.bench_function("borrowed_receiver/non_utf8_strict", |bencher| {
       bencher.iter(|| black_box(black_box(non_utf8.as_path()).try_to_slash()));
     });
-    group.bench_function("borrowed_receiver/non_utf8_lossy_result", |bencher| {
+    group.bench_function("borrowed_native/non_utf8_lossy", |bencher| {
       bencher.iter(|| black_box(black_box(non_utf8.as_path()).to_slash_lossy()));
     });
     group.finish();

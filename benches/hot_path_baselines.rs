@@ -9,7 +9,7 @@ mod support;
 #[cfg(all(target_family = "unix", not(target_os = "cygwin")))]
 use support::workloads::RELATIVE_CASES;
 #[cfg(any(unix, windows))]
-use support::workloads::{ROLLDOWN_ROOT, non_utf8_path};
+use support::workloads::{ROLLDOWN_ROOT, invalid_unicode_path};
 
 fn bench_hot_path_baselines(criterion: &mut Criterion) {
   #[cfg(not(target_family = "windows"))]
@@ -33,7 +33,7 @@ fn bench_hot_path_baselines(criterion: &mut Criterion) {
 
   #[cfg(any(unix, windows))]
   {
-    let non_utf8 = non_utf8_path();
+    let non_utf8 = invalid_unicode_path();
     let non_utf8_name = non_utf8.file_name().expect("non-UTF-8 fixture has a file name").to_owned();
     let mut dirty_before_non_utf8 = non_utf8.clone();
     dirty_before_non_utf8.pop();
