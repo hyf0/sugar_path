@@ -54,6 +54,10 @@ name = "relative"
 harness = false
 
 [[bench]]
+name = "hot_path_baselines"
+harness = false
+
+[[bench]]
 name = "to_slash"
 harness = false
 
