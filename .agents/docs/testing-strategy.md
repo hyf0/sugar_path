@@ -31,6 +31,7 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - `relative_with` has fixed Unix and Windows expected-output matrices for relative, absolute, mixed-context, dirty, equal, root-clamped, trailing-separator, root-relative, drive-relative, and different-drive results, using both borrowed and owned cwd arguments.
 - Cwd-independent rows pin the same literal result through `relative`, `try_relative`, and both explicit-cwd argument forms while proving that an unused non-absolute cwd is not validated.
 - `try_relative` and `relative_with` assert borrowed descendant and equal suffixes, owned upward and dirty results, owned cwd-resolved results, and receiver-only borrowing when base and cwd are owned temporaries.
+- An independent public `relative_with` model resolves its own root and component structures without calling SugarPath or `std::path::components`, then checks 40,368 Unix and 161,472 Windows combinations across clean and dirty native spellings. Its dirty absolute cwd contains `..`; Unix comparison is exact, while Windows roots and components compare with ASCII case ignored.
 - On macOS and Linux, all 224,676 pairs from the bounded short absolute spelling set plus the multibyte set are checked through the production `relative_str` dispatch and the suffix-validation helper against the slow component oracle.
 - Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, preserves the ambient error and panic checks for dependent calls, and proves that a valid explicit cwd still succeeds.
 
@@ -53,6 +54,7 @@ Any change to a public contract, platform branch, native-encoding comparison, cl
 - [Native CI target and sentinel checks](../../.github/workflows/test.yaml)
 - [Default/all-feature configuration sentinel](../../tests/feature_configuration.rs)
 - [Fixed explicit and fallible relative matrices](../../tests/relative_lexical.rs)
+- [Independent bounded public relative model](../../tests/public_relative_model.rs)
 - [Relative ownership and lifetime contracts](../../tests/relative_borrowing.rs)
 - [Unavailable-cwd relative behavior](../../tests/relative_without_cwd.rs)
 - [Production dispatch and short-path oracle](../../src/impl_sugar_path.rs)
