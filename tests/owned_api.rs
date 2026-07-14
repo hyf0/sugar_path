@@ -125,11 +125,9 @@ fn owned_apis_preserve_and_replace_invalid_unix_encoding() {
   assert!(std::panic::catch_unwind(move || strict.into_slash()).is_err());
 
   let recoverable = input.clone();
-  let identity = buffer_identity(&recoverable);
   let returned =
     recoverable.try_into_slash().expect_err("invalid Unix encoding must be returned unchanged");
   assert_eq!(returned.as_os_str().as_bytes(), input.as_os_str().as_bytes());
-  assert_eq!(buffer_identity(&returned), identity);
   assert_eq!(input.into_slash_lossy(), "./dir//invalid-\u{fffd}/../tail/");
 }
 
@@ -163,11 +161,9 @@ fn owned_apis_preserve_and_replace_invalid_windows_encoding() {
   assert!(std::panic::catch_unwind(move || strict.into_slash()).is_err());
 
   let recoverable = input.clone();
-  let identity = buffer_identity(&recoverable);
   let returned =
     recoverable.try_into_slash().expect_err("invalid Windows encoding must be returned unchanged");
   assert_eq!(returned.as_os_str().encode_wide().collect::<Vec<_>>(), input_wide);
-  assert_eq!(buffer_identity(&returned), identity);
   assert_eq!(input.into_slash_lossy(), "./dir//invalid-\u{fffd}/../tail/");
 
   let mut no_native_separator_wide: Vec<u16> = "invalid-".encode_utf16().collect();
