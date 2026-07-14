@@ -22,13 +22,17 @@ fn absolute_paths_do_not_require_current_directory() {
     let clean_output = clean.absolutize();
     assert!(matches!(clean_output, Cow::Borrowed(_)));
     assert_eq!(clean_output.as_os_str(), clean.as_os_str());
-    assert!(clean.try_absolutize().is_ok());
+    let clean_try = clean.try_absolutize().expect("clean absolute path should succeed");
+    assert!(matches!(clean_try, Cow::Borrowed(_)));
+    assert_eq!(clean_try.as_os_str(), clean.as_os_str());
 
     let dirty = Path::new("/sugar-path/../file.js/");
     let dirty_output = dirty.absolutize();
     assert!(matches!(dirty_output, Cow::Owned(_)));
     assert_eq!(dirty_output.as_os_str(), Path::new("/file.js").as_os_str());
-    assert!(dirty.try_absolutize().is_ok());
+    let dirty_try = dirty.try_absolutize().expect("dirty absolute path should succeed");
+    assert!(matches!(dirty_try, Cow::Owned(_)));
+    assert_eq!(dirty_try.as_os_str(), Path::new("/file.js").as_os_str());
 
     assert!(Path::new("relative.js").try_absolutize().is_err());
     assert!(std::panic::catch_unwind(|| Path::new("relative.js").absolutize()).is_err());
