@@ -48,11 +48,23 @@ jobs:
         run: cargo doc --locked --workspace --all-features --no-deps
 
   test:
-    name: Test ${{ matrix.os }}
+    name: Test ${{ matrix.expected_host }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            expected_host: x86_64-unknown-linux-gnu
+            required_target_feature: ""
+            expected_test: impl_sugar_path::relative_str_tests::production_dispatch_and_suffix_validation_match_short_path_oracle
+          - os: windows-latest
+            expected_host: x86_64-pc-windows-msvc
+            required_target_feature: ""
+            expected_test: windows_relative_with_has_fixed_context_results
+          - os: macos-latest
+            expected_host: aarch64-apple-darwin
+            required_target_feature: neon
+            expected_test: absolute_relative_paths_cross_neon_block_boundaries_exactly
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -61,13 +73,42 @@ jobs:
         with:
           toolchain: 1.97.0
           components: clippy
+      - name: Verify native Rust target
+        env:
+          EXPECTED_HOST: ${{ matrix.expected_host }}
+          REQUIRED_TARGET_FEATURE: ${{ matrix.required_target_feature }}
+        run: |
+          actual_host="$(rustc -vV | sed -n 's/^host: //p')"
+          if [[ "$actual_host" != "$EXPECTED_HOST" ]]; then
+            echo "expected Rust host $EXPECTED_HOST, found $actual_host"
+            exit 1
+          fi
+          if [[ -n "$REQUIRED_TARGET_FEATURE" ]] \
+            && ! rustc --print cfg | grep -Fqx "target_feature=\"$REQUIRED_TARGET_FEATURE\""; then
+            echo "Rust host $EXPECTED_HOST is missing target feature $REQUIRED_TARGET_FEATURE"
+            exit 1
+          fi
       # Clippy stays on each OS: platform-gated imports only fail under that target.
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Test default features
+        env:
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "0"
         run: cargo test --locked -p sugar_path
       - name: Test all features
+        env:
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
         run: cargo test --locked --workspace --all-features
+      - name: Verify platform-specific test registration
+        env:
+          EXPECTED_TEST: ${{ matrix.expected_test }}
+        run: |
+          cargo test --locked -p sugar_path --all-features -- --list > target/all-feature-tests.txt
+          if ! grep -Fq "$EXPECTED_TEST: test" target/all-feature-tests.txt; then
+            echo "expected platform-specific test was not registered: $EXPECTED_TEST"
+            cat target/all-feature-tests.txt
+            exit 1
+          fi
 
   # Continuous gate: Linux + Windows only. The tracker always measures the
   # cached_current_dir production config via `cargo allocs`.

@@ -1,6 +1,7 @@
 #![cfg(unix)]
 
 use std::{
+  borrow::Cow,
   env, fs,
   panic::{AssertUnwindSafe, catch_unwind},
   path::Path,
@@ -18,22 +19,29 @@ fn cwd_independent_relative_inputs_do_not_read_the_current_directory() {
     fs::remove_dir(&doomed).expect("remove the child's current directory");
     assert!(env::current_dir().is_err());
 
-    assert_eq!(
-      Path::new("./dist/assets/./temp/../index.js")
-        .relative(Path::new("dist/./chunks/../chunks"))
-        .as_os_str(),
-      Path::new("../assets/index.js").as_os_str(),
-    );
-    assert_eq!(
-      Path::new("../../dist/assets/index.js").relative(Path::new("../../dist/chunks")).as_os_str(),
-      Path::new("../assets/index.js").as_os_str(),
-    );
-    assert!(
-      Path::new("../../dist/assets/index.js").try_relative(Path::new("../../dist/chunks")).is_ok(),
-    );
+    let dirty =
+      Path::new("./dist/assets/./temp/../index.js").relative(Path::new("dist/./chunks/../chunks"));
+    assert_eq!(dirty.as_os_str(), Path::new("../assets/index.js").as_os_str());
+    assert!(matches!(dirty, Cow::Owned(_)));
+
+    let target = Path::new("../../dist/assets/index.js");
+    let base = Path::new("../../dist/chunks");
+    let relative = target.relative(base);
+    assert_eq!(relative.as_os_str(), Path::new("../assets/index.js").as_os_str());
+    assert!(matches!(relative, Cow::Owned(_)));
+
+    let fallible = target.try_relative(base).expect("equal leading parents do not need cwd");
+    assert_eq!(fallible.as_os_str(), Path::new("../assets/index.js").as_os_str());
+    assert!(matches!(fallible, Cow::Owned(_)));
+
     assert!(
       Path::new("../../dist/assets/index.js").try_relative(Path::new("../dist/chunks")).is_err(),
     );
+
+    let explicit = Path::new("../../dist/assets/index.js")
+      .relative_with(Path::new("../dist/chunks"), Path::new("/"));
+    assert_eq!(explicit.as_os_str(), Path::new("../assets/index.js").as_os_str());
+    assert!(matches!(explicit, Cow::Owned(_)));
 
     let cwd_dependent = catch_unwind(AssertUnwindSafe(|| {
       Path::new("../../dist/assets/index.js").relative(Path::new("../dist/chunks"))

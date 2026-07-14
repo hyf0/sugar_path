@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use sugar_path::SugarPath;
 
-fn oracle_with_cwd(target: &Path, base: &Path, cwd: &Path) -> PathBuf {
+fn relative_with_cwd(target: &Path, base: &Path, cwd: &Path) -> PathBuf {
   target.relative_with(base, cwd).into_owned()
 }
 
@@ -15,6 +15,128 @@ fn assert_exact(base: &str, target: &str, expected: &str) {
     Path::new(expected).as_os_str(),
     "target {target:?}, base {base:?}",
   );
+}
+
+fn assert_explicit_context_matrix(cwd: &Path, cases: &[(&str, &str, &str)]) {
+  for &(target, base, expected) in cases {
+    let target = Path::new(target);
+    let expected = Path::new(expected);
+
+    let borrowed_cwd = target.relative_with(base, cwd);
+    assert_eq!(
+      borrowed_cwd.as_os_str(),
+      expected.as_os_str(),
+      "borrowed cwd: target {target:?}, base {base:?}, cwd {cwd:?}",
+    );
+
+    let owned_cwd = target.relative_with(base, cwd.to_owned());
+    assert_eq!(
+      owned_cwd.as_os_str(),
+      expected.as_os_str(),
+      "owned cwd: target {target:?}, base {base:?}, cwd {cwd:?}",
+    );
+  }
+}
+
+fn assert_cwd_independent_contexts(cases: &[(&str, &str, &str)]) {
+  for &(target, base, expected) in cases {
+    let target = Path::new(target);
+    let expected = Path::new(expected);
+
+    let ambient = target.relative(base);
+    assert_eq!(
+      ambient.as_os_str(),
+      expected.as_os_str(),
+      "ambient: target {target:?}, base {base:?}",
+    );
+
+    let fallible = target.try_relative(base).expect("cwd-independent relative must not fail");
+    assert_eq!(
+      fallible.as_os_str(),
+      expected.as_os_str(),
+      "fallible: target {target:?}, base {base:?}",
+    );
+
+    let explicit_borrowed = target.relative_with(base, Path::new("not/absolute"));
+    assert_eq!(
+      explicit_borrowed.as_os_str(),
+      expected.as_os_str(),
+      "explicit borrowed unused cwd: target {target:?}, base {base:?}",
+    );
+
+    let explicit_owned = target.relative_with(base, PathBuf::from("not/absolute"));
+    assert_eq!(
+      explicit_owned.as_os_str(),
+      expected.as_os_str(),
+      "explicit owned unused cwd: target {target:?}, base {base:?}",
+    );
+  }
+}
+
+#[cfg(unix)]
+#[test]
+fn unix_relative_with_has_fixed_context_results() {
+  assert_explicit_context_matrix(
+    Path::new("/workspace/project"),
+    &[
+      ("src/lib.rs", ".", "src/lib.rs"),
+      (".", "src", ".."),
+      ("../shared/pkg", "src", "../../shared/pkg"),
+      ("src", "../shared", "../project/src"),
+      ("/opt/pkg", "src", "../../../opt/pkg"),
+      ("src", "/opt/pkg", "../../workspace/project/src"),
+      ("./dist/./temp/../assets/", "dist/assets", ""),
+      ("../../../../target/", ".", "../../target"),
+      ("/workspace/project/dist/", "/workspace/project", "dist"),
+      ("/workspace//project/./dist", "/workspace/project/chunks/..", "dist"),
+    ],
+  );
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_relative_with_has_fixed_context_results() {
+  assert_explicit_context_matrix(
+    Path::new(r"C:\workspace\project"),
+    &[
+      (r"src\lib.rs", ".", r"src\lib.rs"),
+      (".", "src", ".."),
+      (r"..\shared\pkg", "src", r"..\..\shared\pkg"),
+      ("src", r"..\shared", r"..\project\src"),
+      (r"C:\opt\pkg", "src", r"..\..\..\opt\pkg"),
+      ("src", r"C:\opt\pkg", r"..\..\workspace\project\src"),
+      (r".\dist\.\temp\..\assets\", r"dist\assets", ""),
+      (r"..\..\..\..\target\", ".", r"..\..\target"),
+      (r"\workspace\project\dist\", r"\workspace\project", "dist"),
+      (r"C:/workspace//project/./dist", r"C:\workspace\project\chunks\..", "dist"),
+      (r"D:\target\", "src", r"D:\target"),
+      (r"C:src", r"C:dist", r"..\src"),
+      (r"D:src", r"D:dist", r"..\src"),
+      (r"D:src", r"C:dist", r"D:src"),
+    ],
+  );
+}
+
+#[test]
+fn cwd_independent_variants_have_fixed_results_and_ignore_explicit_cwd() {
+  #[cfg(unix)]
+  let cases = [
+    ("/workspace/project/src", "/workspace/project", "src"),
+    ("/workspace/project/src/./index", "/workspace//project", "src/index"),
+    ("../../dist/assets", "../../dist/chunks", "../assets"),
+    ("foo/..", "./", ""),
+  ];
+  #[cfg(windows)]
+  let cases = [
+    (r"C:\workspace\project\src", r"C:\workspace\project", "src"),
+    (r"C:\workspace\project\src\.\index", r"C:\workspace\\project", r"src\index"),
+    (r"..\..\dist\assets", r"..\..\dist\chunks", r"..\assets"),
+    (r"\workspace\project\src", r"\workspace\project", "src"),
+    (r"C:dist\assets", r"c:dist\chunks", r"..\assets"),
+    (r"foo\..", r".\", ""),
+  ];
+
+  assert_cwd_independent_contexts(&cases);
 }
 
 #[cfg(unix)]
@@ -80,10 +202,10 @@ fn equal_unresolved_parent_counts_are_cwd_independent() {
       for base in *group {
         let actual = Path::new(target).relative(Path::new(base));
         for cwd in CWDS {
-          let expected = oracle_with_cwd(Path::new(target), Path::new(base), Path::new(cwd));
+          let explicit = relative_with_cwd(Path::new(target), Path::new(base), Path::new(cwd));
           assert_eq!(
             actual.as_os_str(),
-            expected.as_os_str(),
+            explicit.as_os_str(),
             "target {target:?}, base {base:?}, cwd {cwd:?}",
           );
         }
@@ -110,8 +232,8 @@ fn unequal_unresolved_parent_counts_use_the_cwd_dependent_fallback() {
 
   for (target, base) in cases {
     let actual = Path::new(target).relative(Path::new(base));
-    let expected = oracle_with_cwd(Path::new(target), Path::new(base), &cwd);
-    assert_eq!(actual.as_os_str(), expected.as_os_str(), "target {target:?}, base {base:?}");
+    let explicit = relative_with_cwd(Path::new(target), Path::new(base), &cwd);
+    assert_eq!(actual.as_os_str(), explicit.as_os_str(), "target {target:?}, base {base:?}");
   }
 }
 
@@ -143,9 +265,9 @@ fn deep_unequal_parent_miss_uses_the_cwd_dependent_fallback() {
   let cwd = std::env::current_dir().expect("read cwd");
   let base = deep_relative_path(1, &["chunks"]);
   let target = deep_relative_path(2, &["assets", "index.js"]);
-  let expected = oracle_with_cwd(&target, &base, &cwd);
+  let explicit = relative_with_cwd(&target, &base, &cwd);
 
-  assert_eq!(target.relative(base).as_os_str(), expected.as_os_str());
+  assert_eq!(target.relative(base).as_os_str(), explicit.as_os_str());
 }
 
 /// Ambient `relative` for Windows drive-relative inputs must use `try_absolutize`

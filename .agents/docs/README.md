@@ -6,6 +6,7 @@ Use this map to load only the context that bears on the work in front of you. Al
 
 - [Project goal and non-goals](./goal.md) — the intended library shape, the performance promise, and the boundary between lexical path work and filesystem resolution.
 - [Public API redesign](./api-redesign.md) — the settled decision, implementation, and native allocation evidence for the breaking surface.
+- [Semantic test strategy](./testing-strategy.md) — the finite behavior partitions, branch-entry requirements, native CI guarantees, and audited coverage gaps.
 - [Public API and usage](../../README.md) — the supported operations, examples, features, and platform support exposed to users.
 
 ## Code routes
@@ -26,4 +27,4 @@ Use this map to load only the context that bears on the work in front of you. Al
 - Performance optimization scope or a non-UTF-8 performance tradeoff → [UTF-8 is the default performance target](./performance-strategy.md#utf-8-is-the-default-performance-target).
 - Historical Windows-GNU Docker/Wine reproduction → [Local Docker validation is opt-in](./conventions.md#local-docker-validation-is-opt-in) and [Windows GNU local execution gate](../../benchmarks/windows-gnu.md#local-execution-gate).
 - Performance strategy, baseline changes, Rolldown workloads, allocation work, or API performance → [Performance strategy](./performance-strategy.md).
-- Test fixtures or assertions → [Testing conventions](./conventions.md).
+- Test fixtures, assertions, generated cases, or platform test coverage → [Testing conventions](./conventions.md) and [Semantic test strategy](./testing-strategy.md).

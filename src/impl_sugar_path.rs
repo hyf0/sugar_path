@@ -1878,23 +1878,32 @@ fn normalize_parts(path: &str) -> StrVec<'_> {
 mod relative_str_tests {
   use std::borrow::Cow;
 
-  use super::{needs_relative_normalization, relative_str_slow, relative_str_suffix_validated};
+  use super::{
+    needs_relative_normalization, relative_str, relative_str_slow, relative_str_suffix_validated,
+  };
 
-  fn assert_suffix_validation_matches_full_normalization(target: &str, base: &str) {
+  fn assert_dispatch_and_suffix_validation_match_full_normalization(target: &str, base: &str) {
+    let dispatched = relative_str(target, base);
     let target = target.trim_end_matches('/');
     let base = base.trim_end_matches('/');
-    let actual = relative_str_suffix_validated(target, base);
+    let suffix_validated = relative_str_suffix_validated(target, base);
     let expected = relative_str_slow(target, base);
-    assert_eq!(actual, expected, "target {target:?}, base {base:?}");
+    assert_eq!(dispatched, expected, "production dispatch: target {target:?}, base {base:?}");
+    assert_eq!(suffix_validated, expected, "suffix validation: target {target:?}, base {base:?}");
 
     let dirty = needs_relative_normalization(target) || needs_relative_normalization(base);
     let base_is_component_prefix =
       target.strip_prefix(base).is_some_and(|suffix| suffix.is_empty() || suffix.starts_with('/'));
     let should_borrow = !dirty && base_is_component_prefix;
     assert_eq!(
-      matches!(actual, Cow::Borrowed(_)),
+      matches!(dispatched, Cow::Borrowed(_)),
       should_borrow,
-      "target {target:?}, base {base:?} returned the wrong Cow variant",
+      "target {target:?}, base {base:?} returned the wrong Cow variant through production dispatch",
+    );
+    assert_eq!(
+      matches!(suffix_validated, Cow::Borrowed(_)),
+      should_borrow,
+      "target {target:?}, base {base:?} returned the wrong Cow variant through suffix validation",
     );
   }
 
@@ -1924,21 +1933,21 @@ mod relative_str_tests {
   }
 
   #[test]
-  fn suffix_only_validation_matches_full_normalization_for_short_paths() {
+  fn production_dispatch_and_suffix_validation_match_short_path_oracle() {
     let paths = short_absolute_spellings();
     for target in &paths {
       for base in &paths {
-        assert_suffix_validation_matches_full_normalization(target, base);
+        assert_dispatch_and_suffix_validation_match_full_normalization(target, base);
       }
     }
   }
 
   #[test]
-  fn suffix_only_validation_handles_multibyte_prefixes_and_mismatches() {
+  fn production_dispatch_and_suffix_validation_handle_multibyte_paths() {
     let paths = ["/é", "/ê", "/é/a", "/ê/a", "/猫", "/猫/src", "/猫/../src/a", "/猫/../src/b"];
     for target in paths {
       for base in paths {
-        assert_suffix_validation_matches_full_normalization(target, base);
+        assert_dispatch_and_suffix_validation_match_full_normalization(target, base);
       }
     }
   }
