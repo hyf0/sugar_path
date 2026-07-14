@@ -1592,7 +1592,9 @@ fn relative_str_suffix_validated<'a>(target: &'a str, base: &str) -> Cow<'a, str
   };
 
   if at_boundary && common_byte_len == base.len() {
-    if needs_relative_normalization(target) || needs_relative_normalization(base) {
+    // `base` is an exact component-boundary prefix of `target`, so every base
+    // component and separator has already been validated when `target` is clean.
+    if needs_relative_normalization(target) {
       return Cow::Owned(relative_str_slow(target, base));
     }
     return Cow::Borrowed(target[common_prefix..].trim_start_matches('/'));
@@ -1615,7 +1617,8 @@ fn relative_str_suffix_validated<'a>(target: &'a str, base: &str) -> Cow<'a, str
 
   // Upward results are always owned. Shared dirty components normalize to the
   // same prefix on both sides, so only the unmatched suffixes can change the
-  // result. Descendants still scan both full inputs before borrowing a suffix.
+  // result. Zero-up cases without the component-prefix proof above still scan
+  // both full inputs.
   let needs_normalization = if ups == 0 {
     needs_relative_normalization(target) || needs_relative_normalization(base)
   } else {
