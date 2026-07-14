@@ -1569,6 +1569,67 @@ fn windows_prefixes_eq_ignore_ascii_case(
 
 /// String-based relative path computation. Dispatches to the fast path when
 /// the component spelling is already canonical, otherwise normalizes first.
+#[cfg(all(target_os = "macos", target_arch = "aarch64", target_feature = "neon"))]
+fn relative_str<'a>(target: &'a str, base: &str) -> Cow<'a, str> {
+  let target = target.trim_end_matches('/');
+  let base = base.trim_end_matches('/');
+  relative_str_suffix_validated(target, base)
+}
+
+#[cfg(all(
+  any(target_os = "macos", target_os = "linux"),
+  any(test, all(target_os = "macos", target_arch = "aarch64", target_feature = "neon"))
+))]
+fn relative_str_suffix_validated<'a>(target: &'a str, base: &str) -> Cow<'a, str> {
+  let common_byte_len = common_prefix_len_case_sensitive(target.as_bytes(), base.as_bytes());
+  let at_boundary = (common_byte_len == target.len() && common_byte_len == base.len())
+    || (common_byte_len == target.len() && base.as_bytes().get(common_byte_len) == Some(&b'/'))
+    || (common_byte_len == base.len() && target.as_bytes().get(common_byte_len) == Some(&b'/'));
+  let common_prefix = if at_boundary {
+    common_byte_len
+  } else {
+    memrchr(b'/', &target.as_bytes()[..common_byte_len]).unwrap_or(0)
+  };
+
+  if at_boundary && common_byte_len == base.len() {
+    if needs_relative_normalization(target) || needs_relative_normalization(base) {
+      return Cow::Owned(relative_str_slow(target, base));
+    }
+    return Cow::Borrowed(target[common_prefix..].trim_start_matches('/'));
+  }
+
+  let base_remaining = &base.as_bytes()[common_prefix..];
+  let mut ups = 0u32;
+  let mut offset = 0;
+  while offset < base_remaining.len() {
+    if base_remaining[offset] == b'/' {
+      offset += 1;
+      continue;
+    }
+    ups += 1;
+    offset = match memchr(b'/', &base_remaining[offset..]) {
+      Some(pos) => offset + pos + 1,
+      None => base_remaining.len(),
+    };
+  }
+
+  // Upward results are always owned. Shared dirty components normalize to the
+  // same prefix on both sides, so only the unmatched suffixes can change the
+  // result. Descendants still scan both full inputs before borrowing a suffix.
+  let needs_normalization = if ups == 0 {
+    needs_relative_normalization(target) || needs_relative_normalization(base)
+  } else {
+    needs_relative_normalization(&target[common_prefix..])
+      || needs_relative_normalization(&base[common_prefix..])
+  };
+  if needs_normalization {
+    Cow::Owned(relative_str_slow(target, base))
+  } else {
+    relative_str_from_parts(target, common_prefix, ups as usize)
+  }
+}
+
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64", target_feature = "neon")))]
 fn relative_str<'a>(target: &'a str, base: &str) -> Cow<'a, str> {
   let target = target.trim_end_matches('/');
   let base = base.trim_end_matches('/');
@@ -1678,6 +1739,7 @@ fn needs_relative_normalization(path: &str) -> bool {
 
 /// Fast path: no normalization needed. Operates directly on `&str` slices
 /// with zero intermediate allocation.
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64", target_feature = "neon")))]
 fn relative_str_fast<'a>(target: &'a str, base: &str) -> Cow<'a, str> {
   let common_byte_len = {
     #[cfg(target_family = "windows")]
@@ -1742,6 +1804,26 @@ fn relative_str_fast<'a>(target: &'a str, base: &str) -> Cow<'a, str> {
   Cow::Owned(result)
 }
 
+#[cfg(all(
+  any(target_os = "macos", target_os = "linux"),
+  any(test, all(target_os = "macos", target_arch = "aarch64", target_feature = "neon"))
+))]
+fn relative_str_from_parts<'a>(target: &'a str, common_prefix: usize, ups: usize) -> Cow<'a, str> {
+  let target_suffix = target[common_prefix..].trim_start_matches('/');
+  if ups == 0 {
+    return Cow::Borrowed(target_suffix);
+  }
+  let suffix_iter = if target_suffix.is_empty() { None } else { Some(target_suffix) };
+  let mut result = String::with_capacity(ups * 3 + target_suffix.len());
+  std::iter::repeat_n("..", ups).chain(suffix_iter).for_each(|s| {
+    if !result.is_empty() {
+      result.push('/');
+    }
+    result.push_str(s);
+  });
+  Cow::Owned(result)
+}
+
 /// Slow path: normalize `.` and `..` components first, then compute relative path.
 fn relative_str_slow(target: &str, base: &str) -> String {
   let target_parts = normalize_parts(target);
@@ -1790,6 +1872,76 @@ fn normalize_parts(path: &str) -> StrVec<'_> {
     }
   }
   parts
+}
+
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+mod relative_str_tests {
+  use std::borrow::Cow;
+
+  use super::{needs_relative_normalization, relative_str_slow, relative_str_suffix_validated};
+
+  fn assert_suffix_validation_matches_full_normalization(target: &str, base: &str) {
+    let target = target.trim_end_matches('/');
+    let base = base.trim_end_matches('/');
+    let actual = relative_str_suffix_validated(target, base);
+    let expected = relative_str_slow(target, base);
+    assert_eq!(actual, expected, "target {target:?}, base {base:?}");
+
+    let dirty = needs_relative_normalization(target) || needs_relative_normalization(base);
+    let base_is_component_prefix =
+      target.strip_prefix(base).is_some_and(|suffix| suffix.is_empty() || suffix.starts_with('/'));
+    let should_borrow = !dirty && base_is_component_prefix;
+    assert_eq!(
+      matches!(actual, Cow::Borrowed(_)),
+      should_borrow,
+      "target {target:?}, base {base:?} returned the wrong Cow variant",
+    );
+  }
+
+  fn short_absolute_spellings() -> Vec<String> {
+    let components = ["", ".", "..", "a", "A", "b"];
+    let mut paths = Vec::new();
+    for depth in 0..=3u32 {
+      for mut index in 0..components.len().pow(depth) {
+        let mut path = String::from("/");
+        for component_index in 0..depth {
+          if component_index > 0 {
+            path.push('/');
+          }
+          path.push_str(components[index % components.len()]);
+          index /= components.len();
+        }
+        paths.push(path.clone());
+        if path.len() > 1 {
+          path.push('/');
+          paths.push(path);
+        }
+      }
+    }
+    paths.sort_unstable();
+    paths.dedup();
+    paths
+  }
+
+  #[test]
+  fn suffix_only_validation_matches_full_normalization_for_short_paths() {
+    let paths = short_absolute_spellings();
+    for target in &paths {
+      for base in &paths {
+        assert_suffix_validation_matches_full_normalization(target, base);
+      }
+    }
+  }
+
+  #[test]
+  fn suffix_only_validation_handles_multibyte_prefixes_and_mismatches() {
+    let paths = ["/é", "/ê", "/é/a", "/ê/a", "/猫", "/猫/src", "/猫/../src/a", "/猫/../src/b"];
+    for target in paths {
+      for base in paths {
+        assert_suffix_validation_matches_full_normalization(target, base);
+      }
+    }
+  }
 }
 
 /// Replace `\` with `/` using memchr SIMD search. Returns the input unchanged
