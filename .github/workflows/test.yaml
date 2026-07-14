@@ -92,8 +92,12 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Test default features
+        env:
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "0"
         run: cargo test --locked -p sugar_path
       - name: Test all features
+        env:
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
         run: cargo test --locked --workspace --all-features
       - name: Verify platform-specific test registration
         env:

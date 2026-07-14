@@ -22,6 +22,7 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - Literal expected-output tables pin public behavior. One public method may be compared with another to test parity, but it is not an independent oracle; the covered partition must also have a literal expectation or a separate test oracle.
 - Generated tests must call the production dispatch as well as any private helper under review. A helper-only exhaustive test cannot prove that the public path still selects that helper.
 - Platform-gated coverage must not silently disappear. CI verifies the exact Rust host for Linux, Windows, and macOS ARM64, requires `neon` on macOS, and checks that a target-specific sentinel test is registered after the all-feature suite.
+- Default and all-feature coverage must remain distinct. CI declares the expected `cached_current_dir` state for each test command, and an executable sentinel rejects workspace feature unification in the default run.
 - Exact native spelling and encoding are asserted directly. `Path` equality and lossy conversion are insufficient when trailing separators, drive spelling, or invalid encoding are observable.
 - `Cow` and consuming APIs assert ownership separately from value equality. A test that checks only output text does not protect the allocation-facing contract.
 
@@ -50,6 +51,7 @@ Any change to a public contract, platform branch, native-encoding comparison, cl
 ## Durable evidence
 
 - [Native CI target and sentinel checks](../../.github/workflows/test.yaml)
+- [Default/all-feature configuration sentinel](../../tests/feature_configuration.rs)
 - [Fixed explicit and fallible relative matrices](../../tests/relative_lexical.rs)
 - [Relative ownership and lifetime contracts](../../tests/relative_borrowing.rs)
 - [Unavailable-cwd relative behavior](../../tests/relative_without_cwd.rs)
