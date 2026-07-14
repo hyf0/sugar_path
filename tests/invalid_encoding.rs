@@ -86,13 +86,14 @@ mod unix {
   }
 
   #[test]
-  fn slash_conversion_reports_and_replaces_invalid_encoding() {
-    let input = path(b"dir/\x80/file");
+  fn non_utf8_slash_policies_preserve_non_normalized_spelling() {
+    let input = path(b"./dir//invalid-\x80/../tail/");
+    let expected = "./dir//invalid-\u{fffd}/../tail/";
 
     assert!(input.try_to_slash().is_none());
     assert!(std::panic::catch_unwind(|| input.to_slash()).is_err());
     let lossy = input.to_slash_lossy();
-    assert_eq!(lossy, "dir/\u{fffd}/file");
+    assert_eq!(lossy, expected);
     assert!(matches!(&lossy, Cow::Owned(_)));
   }
 
@@ -319,13 +320,19 @@ mod windows {
   }
 
   #[test]
-  fn slash_conversion_reports_and_replaces_invalid_encoding() {
-    let input = invalid_path(r"dir\", r"\file");
+  fn invalid_unicode_slash_policies_preserve_non_normalized_spelling() {
+    let input = invalid_path(r".\dir\\invalid-", r"\..\tail\");
+    let expected = "./dir//invalid-\u{fffd}/../tail/";
 
     assert!(input.try_to_slash().is_none());
     assert!(std::panic::catch_unwind(|| input.to_slash()).is_err());
     let lossy = input.to_slash_lossy();
-    assert_eq!(lossy, "dir/\u{fffd}/file");
+    assert_eq!(lossy, expected);
+    assert!(matches!(&lossy, Cow::Owned(_)));
+
+    let no_native_separator = invalid_path("invalid-", "/tail");
+    let lossy = no_native_separator.to_slash_lossy();
+    assert_eq!(lossy, "invalid-\u{fffd}/tail");
     assert!(matches!(&lossy, Cow::Owned(_)));
   }
 

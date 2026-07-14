@@ -69,28 +69,42 @@ fn into_normalized_matches_borrowed_api_for_dirty_paths() {
 #[test]
 fn owned_slash_apis_reuse_valid_unicode_buffers() {
   #[cfg(target_family = "unix")]
-  let (input, expected) = (
-    "/workspace/rolldown/crates/rolldown/src/module_loader/module_task.rs",
-    "/workspace/rolldown/crates/rolldown/src/module_loader/module_task.rs",
-  );
+  let cases = [
+    (
+      "/workspace/rolldown/crates/rolldown/src/module_loader/module_task.rs",
+      "/workspace/rolldown/crates/rolldown/src/module_loader/module_task.rs",
+    ),
+    (r"/root/./β/../tail//literal\name//", r"/root/./β/../tail//literal\name//"),
+  ];
   #[cfg(target_family = "windows")]
-  let (input, expected) = (
-    r"C:\workspace\rolldown\crates\rolldown\src\module_loader\module_task.rs",
-    "C:/workspace/rolldown/crates/rolldown/src/module_loader/module_task.rs",
-  );
+  let cases = [
+    (
+      r"C:\workspace\rolldown\crates\rolldown\src\module_loader\module_task.rs",
+      "C:/workspace/rolldown/crates/rolldown/src/module_loader/module_task.rs",
+    ),
+    (r"\\server\share\.\β\..\tail\\foreign/name\\", "//server/share/./β/../tail//foreign/name//"),
+    ("//server/share/./β/../tail//foreign/name//", "//server/share/./β/../tail//foreign/name//"),
+  ];
 
-  let path = owned_path_with_capacity(input);
-  let identity = buffer_identity(&path);
-  let slash = path.into_slash();
+  for (input, expected) in cases {
+    let path = owned_path_with_capacity(input);
+    let identity = buffer_identity(&path);
+    let slash = path.into_slash();
+    assert_eq!(slash, expected, "strict: input {input:?}");
+    assert_eq!((slash.as_ptr(), slash.capacity()), identity, "strict: input {input:?}");
 
-  assert_eq!(slash, expected);
-  assert_eq!((slash.as_ptr(), slash.capacity()), identity);
+    let path = owned_path_with_capacity(input);
+    let identity = buffer_identity(&path);
+    let slash = path.try_into_slash().expect("the fixture is valid Unicode");
+    assert_eq!(slash, expected, "try: input {input:?}");
+    assert_eq!((slash.as_ptr(), slash.capacity()), identity, "try: input {input:?}");
 
-  let path = owned_path_with_capacity(input);
-  let identity = buffer_identity(&path);
-  let slash = path.try_into_slash().expect("the fixture is valid Unicode");
-  assert_eq!(slash, expected);
-  assert_eq!((slash.as_ptr(), slash.capacity()), identity);
+    let path = owned_path_with_capacity(input);
+    let identity = buffer_identity(&path);
+    let slash = path.into_slash_lossy();
+    assert_eq!(slash, expected, "lossy: input {input:?}");
+    assert_eq!((slash.as_ptr(), slash.capacity()), identity, "lossy: input {input:?}");
+  }
 }
 
 #[cfg(target_family = "unix")]
@@ -101,13 +115,22 @@ fn owned_apis_preserve_and_replace_invalid_unix_encoding() {
     os::unix::ffi::{OsStrExt, OsStringExt},
   };
 
-  let input = PathBuf::from(OsString::from_vec(b"dir/invalid-\x80/./file".to_vec()));
-  let normalized = input.clone().into_normalized();
+  let normalize_input = PathBuf::from(OsString::from_vec(b"dir/invalid-\x80/./file".to_vec()));
+  let normalized = normalize_input.into_normalized();
   assert_eq!(normalized.as_os_str().as_bytes(), b"dir/invalid-\x80/file");
+
+  let input = PathBuf::from(OsString::from_vec(b"./dir//invalid-\x80/../tail/".to_vec()));
+
+  let strict = input.clone();
+  assert!(std::panic::catch_unwind(move || strict.into_slash()).is_err());
+
+  let recoverable = input.clone();
+  let identity = buffer_identity(&recoverable);
   let returned =
-    input.clone().try_into_slash().expect_err("invalid Unix encoding must be returned unchanged");
+    recoverable.try_into_slash().expect_err("invalid Unix encoding must be returned unchanged");
   assert_eq!(returned.as_os_str().as_bytes(), input.as_os_str().as_bytes());
-  assert_eq!(input.into_slash_lossy(), "dir/invalid-\u{fffd}/./file");
+  assert_eq!(buffer_identity(&returned), identity);
+  assert_eq!(input.into_slash_lossy(), "./dir//invalid-\u{fffd}/../tail/");
 }
 
 #[cfg(target_family = "windows")]
@@ -118,22 +141,38 @@ fn owned_apis_preserve_and_replace_invalid_windows_encoding() {
     os::windows::ffi::{OsStrExt, OsStringExt},
   };
 
-  let mut input_wide: Vec<u16> = r"C:\workspace\invalid-".encode_utf16().collect();
+  let mut normalize_input_wide: Vec<u16> = r"C:\workspace\invalid-".encode_utf16().collect();
+  normalize_input_wide.push(0xd800);
+  normalize_input_wide.extend(r"\.\file".encode_utf16());
+  let normalize_input = PathBuf::from(OsString::from_wide(&normalize_input_wide));
+
+  let mut normalized_wide: Vec<u16> = r"C:\workspace\invalid-".encode_utf16().collect();
+  normalized_wide.push(0xd800);
+  normalized_wide.extend(r"\file".encode_utf16());
+  assert_eq!(
+    normalize_input.into_normalized().as_os_str().encode_wide().collect::<Vec<_>>(),
+    normalized_wide,
+  );
+
+  let mut input_wide: Vec<u16> = r".\dir\\invalid-".encode_utf16().collect();
   input_wide.push(0xd800);
-  input_wide.extend(r"\.\file".encode_utf16());
+  input_wide.extend(r"\..\tail\".encode_utf16());
   let input = PathBuf::from(OsString::from_wide(&input_wide));
 
-  let mut expected_wide: Vec<u16> = r"C:\workspace\invalid-".encode_utf16().collect();
-  expected_wide.push(0xd800);
-  expected_wide.extend(r"\file".encode_utf16());
-  assert_eq!(
-    input.clone().into_normalized().as_os_str().encode_wide().collect::<Vec<_>>(),
-    expected_wide,
-  );
-  let returned = input
-    .clone()
-    .try_into_slash()
-    .expect_err("invalid Windows encoding must be returned unchanged");
+  let strict = input.clone();
+  assert!(std::panic::catch_unwind(move || strict.into_slash()).is_err());
+
+  let recoverable = input.clone();
+  let identity = buffer_identity(&recoverable);
+  let returned =
+    recoverable.try_into_slash().expect_err("invalid Windows encoding must be returned unchanged");
   assert_eq!(returned.as_os_str().encode_wide().collect::<Vec<_>>(), input_wide);
-  assert_eq!(input.into_slash_lossy(), "C:/workspace/invalid-\u{fffd}/./file");
+  assert_eq!(buffer_identity(&returned), identity);
+  assert_eq!(input.into_slash_lossy(), "./dir//invalid-\u{fffd}/../tail/");
+
+  let mut no_native_separator_wide: Vec<u16> = "invalid-".encode_utf16().collect();
+  no_native_separator_wide.push(0xd800);
+  no_native_separator_wide.extend("/tail".encode_utf16());
+  let no_native_separator = PathBuf::from(OsString::from_wide(&no_native_separator_wide));
+  assert_eq!(no_native_separator.into_slash_lossy(), "invalid-\u{fffd}/tail");
 }
