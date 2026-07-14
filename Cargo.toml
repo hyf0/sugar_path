@@ -31,11 +31,9 @@ codspeed = ["criterion2/codspeed"]
 memchr = "2"
 smallvec = "1.15"
 
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 arcstr = { version = "=1.2.0", default-features = false }
 criterion2 = { version = "3", default-features = false }
-
-[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 mimalloc-safe = "=0.1.64"
 
 [profile.bench]

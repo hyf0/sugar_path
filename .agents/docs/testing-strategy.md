@@ -22,9 +22,9 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - Literal expected-output tables pin public behavior. One public method may be compared with another to test parity, but it is not an independent oracle; the covered partition must also have a literal expectation or a separate test oracle.
 - Generated tests must call the production dispatch as well as any private helper under review. A helper-only exhaustive test cannot prove that the public path still selects that helper.
 - Bounded generators must assert their expected corpus or comparison count. A reduced generation depth that leaves all remaining comparisons green is still a coverage failure.
-- Platform-gated coverage must not silently disappear. CI verifies the exact Rust host for Linux, Windows, and macOS ARM64, requires `neon` on macOS, and checks an explicit list of critical target-specific tests after the all-feature suite.
+- Platform-gated coverage must not silently disappear. CI verifies the exact Rust host for Linux, Windows, and macOS ARM64, requires `neon` on macOS, and checks an explicit list of critical target-specific tests in both the default and `cached_current_dir` configurations.
 - WebAssembly support has two separate gates: `wasm32-unknown-unknown` compiles the production library with and without cwd caching, while `wasm32-wasip1` executes selected public contracts, native byte encoding, both cwd policies, and rustdoc examples under Wasmtime. These are correctness gates; WebAssembly is not a performance target.
-- Default and all-feature coverage must remain distinct. CI declares the expected `cached_current_dir` state for each test command, and an executable sentinel rejects workspace feature unification in the default run.
+- Default and `cached_current_dir` production coverage must remain distinct. CI declares the expected feature state for each test command, and an executable sentinel rejects a missing expectation or workspace feature unification.
 - Exact native spelling and encoding are asserted directly. `Path` equality and lossy conversion are insufficient when trailing separators, drive spelling, or invalid encoding are observable.
 - `Cow` and consuming APIs assert ownership separately from value equality. A test that checks only output text does not protect the allocation-facing contract.
 
@@ -59,7 +59,7 @@ Any change to a public contract, platform branch, native-encoding comparison, cl
 - [Native CI target and sentinel checks](../../.github/workflows/test.yaml)
 - [WASIp1 public API contracts](../../tests/wasm_wasi_contracts.rs)
 - [WASIp1 cached cwd contract](../../tests/wasm_wasi_cached_current_dir.rs)
-- [Default/all-feature configuration sentinel](../../tests/feature_configuration.rs)
+- [Default/cached-current-directory configuration sentinel](../../tests/feature_configuration.rs)
 - [Fixed explicit and fallible relative matrices](../../tests/relative_lexical.rs)
 - [Independent bounded public relative model](../../tests/public_relative_model.rs)
 - [Relative ownership and lifetime contracts](../../tests/relative_borrowing.rs)

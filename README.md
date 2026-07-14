@@ -128,7 +128,7 @@ With `cached_current_dir`, later `std::env::set_current_dir` calls are not obser
 
 ## Platform support
 
-CI tests Ubuntu, macOS, and Windows with default features and with all features. It also compile-checks `wasm32-unknown-unknown` and executes selected public contracts under `wasm32-wasip1` with and without cwd caching. Semantics stay host-native:
+CI tests Ubuntu, macOS, and Windows with default features and with `cached_current_dir` enabled. It also compile-checks `wasm32-unknown-unknown` and executes selected public contracts under `wasm32-wasip1` with and without cwd caching. Semantics stay host-native:
 
 - Unix paths keep arbitrary native bytes outside Unicode conversion.
 - WASIp1 paths keep arbitrary native bytes outside Unicode conversion and use `/` as their separator.

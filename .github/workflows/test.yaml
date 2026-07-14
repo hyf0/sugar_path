@@ -21,7 +21,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  # Keep one run per PR and only the newest main push. Manual snapshot runs stay independent.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && format('ref-{0}', github.ref) || format('run-{0}', github.run_id) }}
   cancel-in-progress: true
 
 defaults:
@@ -45,7 +46,7 @@ jobs:
       - name: Documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --locked --workspace --all-features --no-deps
+        run: cargo doc --locked -p sugar_path --all-features --no-deps
 
   test:
     name: Test ${{ matrix.expected_host }}
@@ -64,6 +65,10 @@ jobs:
               utf8_string_receivers_borrow_only_from_the_receiver
               absolute_paths_do_not_require_current_directory
               cwd_independent_relative_inputs_do_not_read_the_current_directory
+              current_directory_is_cached_only_when_requested
+              pure_relative_calls_initialize_and_observe_cwd_policy
+              failed_cwd_lookup_does_not_poison_later_relative_calls
+              requested_cached_current_dir_configuration_is_active
           - os: windows-latest
             expected_host: x86_64-pc-windows-msvc
             required_target_feature: ""
@@ -75,6 +80,9 @@ jobs:
               absolutization_preserves_encoded_root_identifiers
               windows::absolute_relative_common_prefix_compares_invalid_encoding_exactly
               utf8_string_receivers_borrow_only_from_the_receiver
+              current_directory_is_cached_only_when_requested
+              pure_relative_calls_initialize_and_observe_cwd_policy
+              requested_cached_current_dir_configuration_is_active
           - os: macos-latest
             expected_host: aarch64-apple-darwin
             required_target_feature: neon
@@ -86,6 +94,10 @@ jobs:
               utf8_string_receivers_borrow_only_from_the_receiver
               absolute_paths_do_not_require_current_directory
               cwd_independent_relative_inputs_do_not_read_the_current_directory
+              current_directory_is_cached_only_when_requested
+              pure_relative_calls_initialize_and_observe_cwd_policy
+              failed_cwd_lookup_does_not_poison_later_relative_calls
+              requested_cached_current_dir_configuration_is_active
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -116,22 +128,25 @@ jobs:
         env:
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "0"
         run: cargo test --locked -p sugar_path
-      - name: Test all features
+      - name: Test cached current directory
         env:
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
-        run: cargo test --locked --workspace --all-features
+        run: cargo test --locked --workspace --features cached_current_dir
       - name: Verify platform-specific test registration
         env:
           EXPECTED_TESTS: ${{ matrix.expected_tests }}
         run: |
-          cargo test --locked -p sugar_path --all-features -- --list > target/all-feature-tests.txt
-          while IFS= read -r expected_test; do
-            if ! grep -Fqx "$expected_test: test" target/all-feature-tests.txt; then
-              echo "expected platform-specific test was not registered: $expected_test"
-              cat target/all-feature-tests.txt
-              exit 1
-            fi
-          done <<< "$EXPECTED_TESTS"
+          cargo test --locked -p sugar_path --lib --tests -- --list > target/default-tests.txt
+          cargo test --locked -p sugar_path --features cached_current_dir --lib --tests -- --list > target/cached-tests.txt
+          for registered_tests in target/default-tests.txt target/cached-tests.txt; do
+            while IFS= read -r expected_test; do
+              if ! grep -Fqx "$expected_test: test" "$registered_tests"; then
+                echo "expected platform-specific test was not registered in $registered_tests: $expected_test"
+                cat "$registered_tests"
+                exit 1
+              fi
+            done <<< "$EXPECTED_TESTS"
+          done
 
   wasm:
     name: Test WebAssembly
@@ -144,6 +159,10 @@ jobs:
           toolchain: 1.97.0
           components: clippy
           targets: wasm32-unknown-unknown,wasm32-wasip1
+      - name: Check browser WebAssembly library
+        run: |
+          cargo check --locked -p sugar_path --lib --target wasm32-unknown-unknown --no-default-features
+          cargo check --locked -p sugar_path --lib --target wasm32-unknown-unknown --no-default-features --features cached_current_dir
       - name: Install Wasmtime
         uses: bytecodealliance/actions/wasmtime/setup@9152e710e9f7182e4c29ad218e4f335a7b203613 # v1
         with:
@@ -152,10 +171,6 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/sugar-path-wasi-a" "$RUNNER_TEMP/sugar-path-wasi-b"
           echo "CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime --dir=$RUNNER_TEMP/sugar-path-wasi-a::/sugar-path-wasi-a --dir=$RUNNER_TEMP/sugar-path-wasi-b::/sugar-path-wasi-b --env SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR" >> "$GITHUB_ENV"
-      - name: Check browser WebAssembly library
-        run: |
-          cargo check --locked -p sugar_path --lib --target wasm32-unknown-unknown --no-default-features
-          cargo check --locked -p sugar_path --lib --target wasm32-unknown-unknown --no-default-features --features cached_current_dir
       - name: Clippy WASI tests
         run: |
           cargo clippy --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- -D warnings
@@ -173,29 +188,30 @@ jobs:
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
         run: cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --doc
       - name: Verify WASI test registration
-        env:
-          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
         run: |
-          cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --list > target/wasi-tests.txt
-          for expected_test in \
-            normalize_preserves_wasi_spelling_and_native_encoding \
-            absolutize_uses_explicit_context_without_host_filesystem_access \
-            relative_apis_cover_ambient_independent_and_explicit_contexts \
-            slash_policies_cover_valid_and_invalid_wasi_encoding \
-            consuming_and_string_apis_preserve_wasi_results \
-            ambient_cwd_observes_the_requested_feature_policy \
-            requested_cached_current_dir_configuration_is_active; do
-            if ! grep -Fqx "$expected_test: test" target/wasi-tests.txt; then
-              echo "expected WASI test was not registered: $expected_test"
-              cat target/wasi-tests.txt
-              exit 1
-            fi
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=0 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --list > target/wasi-default-tests.txt
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --list > target/wasi-cached-tests.txt
+          for registered_tests in target/wasi-default-tests.txt target/wasi-cached-tests.txt; do
+            for expected_test in \
+              normalize_preserves_wasi_spelling_and_native_encoding \
+              absolutize_uses_explicit_context_without_host_filesystem_access \
+              relative_apis_cover_ambient_independent_and_explicit_contexts \
+              slash_policies_cover_valid_and_invalid_wasi_encoding \
+              consuming_and_string_apis_preserve_wasi_results \
+              ambient_cwd_observes_the_requested_feature_policy \
+              requested_cached_current_dir_configuration_is_active; do
+              if ! grep -Fqx "$expected_test: test" "$registered_tests"; then
+                echo "expected WASI test was not registered in $registered_tests: $expected_test"
+                cat "$registered_tests"
+                exit 1
+              fi
+            done
           done
 
   # Continuous gate: Linux + Windows only. The tracker always measures the
   # cached_current_dir production config via `cargo allocs`.
   allocations:
-    name: Allocation snapshot ${{ matrix.os }}
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.allocation_snapshot_mode == 'generate' && 'Generate allocation snapshot' || 'Allocation snapshot' }} ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
