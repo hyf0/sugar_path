@@ -1,10 +1,21 @@
 use std::{
+  borrow::Cow,
   env, fs,
   path::{Path, PathBuf},
   time::{SystemTime, UNIX_EPOCH},
 };
 
-use sugar_path::SugarPath;
+use sugar_path::{SugarPath, SugarPathBuf};
+
+fn assert_owned_relative(target: &Path, base: &Path, expected: &Path, context: &str) {
+  let strict = target.relative(base);
+  assert_eq!(strict.as_os_str(), expected.as_os_str(), "{context} strict");
+  assert!(matches!(strict, Cow::Owned(_)), "{context} strict should own");
+
+  let fallible = target.try_relative(base).expect("fixture should resolve against cwd");
+  assert_eq!(fallible.as_os_str(), expected.as_os_str(), "{context} try");
+  assert!(matches!(fallible, Cow::Owned(_)), "{context} try should own");
+}
 
 struct CurrentDirGuard {
   original: PathBuf,
@@ -38,14 +49,99 @@ fn current_directory_is_cached_only_when_requested() {
   let first = env::current_dir().expect("read the first temporary directory");
   let dirty_absolute = first.join("unused").join("..").join("absolute.js");
   assert_eq!(dirty_absolute.absolutize(), first.join("absolute.js"));
+  assert_owned_relative(
+    Path::new("pkg/assets/./index.js"),
+    Path::new("pkg/chunks"),
+    &PathBuf::from("..").join("assets").join("index.js"),
+    "cwd-independent relative",
+  );
 
   env::set_current_dir(&second).expect("enter the second temporary directory");
   let second = env::current_dir().expect("read the second temporary directory");
+  let root = second.parent().expect("temporary directory has a parent");
+  let anchor = root.join("anchor");
+  let second_name = second.file_name().expect("second directory has a name");
+  let second_target = second.join("absolute-target.js");
+  let relative_target = Path::new("../second/relative-target.js");
+  let relative_base = Path::new("base");
+  assert_owned_relative(
+    relative_target,
+    relative_base,
+    &PathBuf::from("..").join("relative-target.js"),
+    "unequal-parent relative pair initializes cwd",
+  );
+  assert_owned_relative(
+    Path::new("entry.js"),
+    &anchor,
+    &PathBuf::from("..").join(second_name).join("entry.js"),
+    "relative receiver initializes cwd",
+  );
+  assert_owned_relative(
+    &second_target,
+    Path::new("base"),
+    &PathBuf::from("..").join("absolute-target.js"),
+    "relative base uses initialized cwd",
+  );
   assert_eq!(Path::new("entry.js").absolutize(), second.join("entry.js"));
 
   env::set_current_dir(&third).expect("enter the third temporary directory");
   let third = env::current_dir().expect("read the third temporary directory");
   let expected_base = if cfg!(feature = "cached_current_dir") { &second } else { &third };
+  let expected_base_name = expected_base.file_name().expect("expected base has a name");
+  let expected_relative_pair = if cfg!(feature = "cached_current_dir") {
+    PathBuf::from("..").join("relative-target.js")
+  } else {
+    PathBuf::from("..").join("..").join(second_name).join("relative-target.js")
+  };
+  assert_owned_relative(
+    relative_target,
+    relative_base,
+    &expected_relative_pair,
+    "unequal-parent relative pair observes cwd policy",
+  );
+  let expected_slash = if cfg!(feature = "cached_current_dir") {
+    "../relative-target.js"
+  } else {
+    "../../second/relative-target.js"
+  };
+  assert_eq!(
+    relative_target.relative(relative_base).into_owned().into_slash(),
+    expected_slash,
+    "strict relative-to-slash composition observes cwd policy",
+  );
+  assert_eq!(
+    relative_target
+      .try_relative(relative_base)
+      .expect("fixture should resolve against cwd")
+      .into_owned()
+      .into_slash(),
+    expected_slash,
+    "fallible relative-to-slash composition observes cwd policy",
+  );
+  let explicit = relative_target.relative_with(relative_base, &third);
+  assert_eq!(
+    explicit.as_os_str(),
+    PathBuf::from("..").join("..").join(second_name).join("relative-target.js").as_os_str(),
+    "explicit cwd must bypass ambient caching",
+  );
+  assert!(matches!(explicit, Cow::Owned(_)), "explicit unequal-parent result should own");
+  assert_owned_relative(
+    Path::new("entry.js"),
+    &anchor,
+    &PathBuf::from("..").join(expected_base_name).join("entry.js"),
+    "relative receiver observes cwd policy",
+  );
+  let expected_from_relative_base = if cfg!(feature = "cached_current_dir") {
+    PathBuf::from("..").join("absolute-target.js")
+  } else {
+    PathBuf::from("..").join("..").join(second_name).join("absolute-target.js")
+  };
+  assert_owned_relative(
+    &second_target,
+    Path::new("base"),
+    &expected_from_relative_base,
+    "relative base observes cwd policy",
+  );
   assert_eq!(Path::new("entry.js").absolutize(), expected_base.join("entry.js"));
 
   #[cfg(target_family = "windows")]
@@ -59,10 +155,27 @@ fn current_directory_is_cached_only_when_requested() {
     };
     let drive_relative = format!("{drive}:drive-entry.js");
     let oracle = std::path::absolute(&drive_relative).expect("resolve the drive-relative oracle");
+    assert_eq!(oracle, third.join("drive-entry.js"));
     assert_eq!(
       Path::new(&drive_relative).absolutize().as_ref(),
       oracle.as_path(),
       "drive-relative resolution must bypass the single cached cwd",
+    );
+    assert_owned_relative(
+      Path::new(&drive_relative),
+      &anchor,
+      &PathBuf::from("..").join("third").join("drive-entry.js"),
+      "drive-relative receiver bypasses cached cwd",
+    );
+
+    let drive_base = format!("{drive}:drive-base");
+    let base_oracle = std::path::absolute(&drive_base).expect("resolve drive-relative base oracle");
+    assert_eq!(base_oracle, third.join("drive-base"));
+    assert_owned_relative(
+      &second_target,
+      Path::new(&drive_base),
+      &PathBuf::from("..").join("..").join("second").join("absolute-target.js"),
+      "drive-relative base bypasses cached cwd",
     );
   }
 }
