@@ -31,11 +31,17 @@ concurrency:
 
 jobs:
   benchmark:
-    name: Benchmark (simulation, memory)
+    # CodSpeed includes the matrix identity in its runtime environment. Keep the
+    # modes separate so new results remain comparable with the existing baseline.
+    name: Benchmark (${{ matrix.mode }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [simulation, memory]
     steps:
       - uses: actions/checkout@v5
       - name: Install Rust
@@ -49,11 +55,11 @@ jobs:
       - name: Build benchmarks
         env:
           RUSTFLAGS: "-C debuginfo=1 -C strip=none"
-        run: cargo codspeed build --locked --profile bench -m simulation,memory --features codspeed,cached_current_dir
+        run: cargo codspeed build --locked --profile bench -m ${{ matrix.mode }} --features codspeed,cached_current_dir
       - name: Run benchmarks
         uses: CodSpeedHQ/action@f99becdce5e5d51fd556489ebef684f4ecfd6286 # v4.18.5
         timeout-minutes: 15
         with:
-          mode: simulation,memory
-          run: cargo codspeed run
+          mode: ${{ matrix.mode }}
+          run: cargo codspeed run -m ${{ matrix.mode }}
           token: ${{ secrets.CODSPEED_TOKEN }}
