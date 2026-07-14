@@ -1,12 +1,8 @@
 #![cfg(any(target_family = "unix", target_family = "windows"))]
 
-use std::{
-  borrow::Cow,
-  env,
-  path::Path,
-};
 #[cfg(target_family = "windows")]
 use std::path::PathBuf;
+use std::{borrow::Cow, env, path::Path};
 
 use sugar_path::SugarPath;
 
