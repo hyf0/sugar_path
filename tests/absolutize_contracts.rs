@@ -77,15 +77,15 @@ fn unix_ambient_absolutize_and_try_contract_matrix() {
 }
 
 #[cfg(target_family = "windows")]
-fn current_drive(path: &Path) -> u8 {
+fn current_ordinary_disk_drive(path: &Path) -> Option<u8> {
   use std::path::{Component, Prefix};
 
   match path.components().next() {
     Some(Component::Prefix(prefix)) => match prefix.kind() {
-      Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => drive,
-      other => panic!("expected disk cwd, found {other:?}"),
+      Prefix::Disk(drive) => Some(drive),
+      _ => None,
     },
-    other => panic!("expected prefixed cwd, found {other:?}"),
+    _ => None,
   }
 }
 
@@ -136,11 +136,18 @@ fn windows_ambient_absolutize_and_try_contract_matrix() {
   expected.push(r"\pkg\file");
   assert_ambient_case(root_relative, &expected, ExpectedCow::Owned, "root relative");
 
-  let drive = current_drive(&cwd).to_ascii_lowercase();
-  let drive_relative = format!("{}:folder\\.\\file\\", drive as char);
-  let oracle = std::path::absolute(&drive_relative).expect("resolve drive-relative oracle");
-  let expected = preserve_drive_spelling(&oracle, drive);
-  assert_ambient_case(Path::new(&drive_relative), &expected, ExpectedCow::Owned, "drive relative");
+  if let Some(drive) = current_ordinary_disk_drive(&cwd) {
+    let drive = drive.to_ascii_lowercase();
+    let drive_relative = format!("{}:folder\\.\\file\\", drive as char);
+    let mut expected = preserve_drive_spelling(&cwd, drive);
+    expected.push(r"folder\file");
+    assert_ambient_case(
+      Path::new(&drive_relative),
+      &expected,
+      ExpectedCow::Owned,
+      "drive relative",
+    );
+  }
 
   assert_string_receiver(r".\owned\..\file".to_owned(), &cwd.join("file"));
 }

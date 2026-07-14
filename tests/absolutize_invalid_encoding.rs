@@ -81,6 +81,18 @@ mod windows {
     );
   }
 
+  fn current_ordinary_disk_drive(path: &Path) -> Option<u8> {
+    use std::path::{Component, Prefix};
+
+    match path.components().next() {
+      Some(Component::Prefix(prefix)) => match prefix.kind() {
+        Prefix::Disk(drive) => Some(drive),
+        _ => None,
+      },
+      _ => None,
+    }
+  }
+
   fn assert_ambient(input: &Path, expected: &Path, require_owned: bool, name: &str) {
     let strict = input.absolutize();
     assert_wide(&strict, expected, &format!("{name} strict"));
@@ -97,6 +109,8 @@ mod windows {
 
   #[test]
   fn ambient_absolutization_preserves_invalid_windows_units() {
+    let cwd = env::current_dir().expect("read current directory");
+
     let clean = invalid_path(r"C:\sugar-path\invalid-", r"\file");
     assert_ambient(&clean, &clean, false, "clean absolute");
 
@@ -105,14 +119,19 @@ mod windows {
     assert_ambient(&dirty, &normalized, true, "dirty absolute");
 
     let relative = invalid_path(r"pkg\invalid-", r"\.\file\");
-    let expected = env::current_dir()
-      .expect("read current directory")
-      .join(invalid_path(r"pkg\invalid-", r"\file"));
+    let expected = cwd.join(invalid_path(r"pkg\invalid-", r"\file"));
     assert_ambient(&relative, &expected, true, "relative");
 
     let root_relative = invalid_path(r"\pkg\invalid-", r"\.\file\");
-    let mut expected = env::current_dir().expect("read current directory");
+    let mut expected = cwd.clone();
     expected.push(invalid_path(r"\pkg\invalid-", r"\file"));
     assert_ambient(&root_relative, &expected, true, "root relative");
+
+    if let Some(drive) = current_ordinary_disk_drive(&cwd) {
+      let prefix = format!("{}:pkg\\invalid-", drive as char);
+      let drive_relative = invalid_path(&prefix, r"\.\file\");
+      let expected = cwd.join(invalid_path(r"pkg\invalid-", r"\file"));
+      assert_ambient(&drive_relative, &expected, false, "drive relative");
+    }
   }
 }
