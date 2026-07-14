@@ -33,13 +33,15 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - On macOS and Linux, all 224,676 pairs from the bounded short absolute spelling set plus the multibyte set are checked through the production `relative_str` dispatch and the suffix-validation helper against the slow component oracle.
 - Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, preserves the ambient error and panic checks for dependent calls, and proves that a valid explicit cwd still succeeds.
 
-## Audited follow-up gaps
+## Follow-up coverage status
 
-- Add systematic `try_absolutize` value and `Cow` parity, exact Windows root-relative absolutization, and invalid-native ambient absolutization cases.
-- Cross the full borrowed normalization corpus with `PathBuf::into_normalized`, including Windows prefix and trailing-separator forms and valid multibyte names.
-- Complete the slash receiver-policy matrix for valid `str`, `Path`, and `PathBuf`, strict, fallible, and lossy conversion, non-normalizing spelling, `Cow` behavior, owned reuse, invalid recovery, and consuming strict panic.
-- Add cached-cwd coverage through relative calculation and a failed-initialization retry case before changing current-directory state handling.
-- Add direct Windows root-identifier tests for non-ASCII and invalid-wide comparison in UNC, device, and generic verbatim prefixes.
+The remaining audit partitions are implemented in independent test-only Draft PRs so each contract can be reviewed and merged separately:
+
+- Slash receiver and policy coverage, including native-invalid recovery without making its storage identity a semantic requirement: [Draft PR #53](https://github.com/hyfdev/sugar_path/pull/53).
+- Non-ASCII and invalid-wide Windows root identifiers across UNC, device, and generic verbatim prefixes: [Draft PR #54](https://github.com/hyfdev/sugar_path/pull/54).
+- Systematic `try_absolutize` parity, exact Windows root-relative results, and native-invalid ambient absolutization: [Draft PR #55](https://github.com/hyfdev/sugar_path/pull/55).
+- Cached-cwd relative behavior and failed-initialization retry: [Draft PR #56](https://github.com/hyfdev/sugar_path/pull/56).
+- Independent fixed oracles for consuming normalization across Unix, every Windows prefix kind, trailing separators, and native-invalid encoding: [Draft PR #57](https://github.com/hyfdev/sugar_path/pull/57).
 
 ## Change rule
 
