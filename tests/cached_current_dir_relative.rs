@@ -60,7 +60,7 @@ fn pure_relative_calls_initialize_and_observe_cwd_policy() {
   let initialized = relative_target
     .try_relative(relative_base)
     .expect("unequal-parent fixture should resolve against cwd");
-  assert_eq!(initialized.as_os_str(), Path::new("../relative-target.js").as_os_str());
+  assert_eq!(initialized.as_os_str(), PathBuf::from("..").join("relative-target.js").as_os_str(),);
   assert!(matches!(initialized, Cow::Owned(_)), "initial unequal-parent result should own");
 
   env::set_current_dir(&third).expect("enter the third temporary directory");
