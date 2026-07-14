@@ -1935,6 +1935,7 @@ mod relative_str_tests {
   #[test]
   fn production_dispatch_and_suffix_validation_match_short_path_oracle() {
     let paths = short_absolute_spellings();
+    assert_eq!(paths.len(), 474, "bounded short-path corpus changed");
     for target in &paths {
       for base in &paths {
         assert_dispatch_and_suffix_validation_match_full_normalization(target, base);
@@ -2102,6 +2103,7 @@ mod normalization_classifier_tests {
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
     const ALPHABET: &[u8] = &[b'a', b'.', b'/', 0x80, 0xff];
+    let mut input_count = 0;
     for len in 0..=6 {
       for mut ordinal in 0..ALPHABET.len().pow(len as u32) {
         let mut bytes = vec![0; len];
@@ -2110,8 +2112,10 @@ mod normalization_classifier_tests {
           ordinal /= ALPHABET.len();
         }
         assert_classifier_matches_full_normalizer(Path::new(&OsString::from_vec(bytes)));
+        input_count += 1;
       }
     }
+    assert_eq!(input_count, 19_531, "bounded Unix classifier corpus changed");
   }
 
   #[cfg(windows)]
@@ -2120,6 +2124,7 @@ mod normalization_classifier_tests {
     use std::{ffi::OsString, os::windows::ffi::OsStringExt};
 
     const ALPHABET: &[u16] = &[b'a' as u16, b'.' as u16, b'\\' as u16, b'/' as u16, 0xd800];
+    let mut input_count = 0;
     for len in 0..=6 {
       for mut ordinal in 0..ALPHABET.len().pow(len as u32) {
         let mut units = vec![0; len];
@@ -2128,7 +2133,9 @@ mod normalization_classifier_tests {
           ordinal /= ALPHABET.len();
         }
         assert_classifier_matches_full_normalizer(Path::new(&OsString::from_wide(&units)));
+        input_count += 1;
       }
     }
+    assert_eq!(input_count, 19_531, "bounded Windows classifier corpus changed");
   }
 }

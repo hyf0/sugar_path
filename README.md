@@ -128,9 +128,10 @@ With `cached_current_dir`, later `std::env::set_current_dir` calls are not obser
 
 ## Platform support
 
-CI tests Ubuntu, macOS, and Windows with default features and with all features. Semantics stay host-native:
+CI tests Ubuntu, macOS, and Windows with default features and with all features. It also compile-checks `wasm32-unknown-unknown` and executes selected public contracts under `wasm32-wasip1` with and without cwd caching. Semantics stay host-native:
 
 - Unix paths keep arbitrary native bytes outside Unicode conversion.
+- WASIp1 paths keep arbitrary native bytes outside Unicode conversion and use `/` as their separator.
 - Windows normalization emits native separators and preserves drive-letter spelling.
 - Windows drive, root, and normal-component comparison is ASCII case-insensitive, not general Unicode case folding.
 - Windows drive, UNC, verbatim, and device namespaces remain distinct roots.

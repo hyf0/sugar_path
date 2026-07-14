@@ -35,6 +35,8 @@ fn absolute_paths_do_not_require_current_directory() {
     assert_eq!(dirty_try.as_os_str(), Path::new("/file.js").as_os_str());
 
     assert!(Path::new("relative.js").try_absolutize().is_err());
+    assert!("relative.js".try_absolutize().is_err());
+    assert!(String::from("relative.js").try_absolutize().is_err());
     assert!(std::panic::catch_unwind(|| Path::new("relative.js").absolutize()).is_err());
     return;
   }
