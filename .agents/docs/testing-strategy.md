@@ -35,13 +35,13 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 
 ## Follow-up coverage status
 
-The remaining audit partitions are implemented in independent test-only Draft PRs so each contract can be reviewed and merged separately:
+The remaining audit partitions are implemented in independent test-only PRs so each contract can be reviewed and merged separately:
 
 - Slash receiver and policy coverage, including native-invalid recovery without making its storage identity a semantic requirement: [Draft PR #53](https://github.com/hyfdev/sugar_path/pull/53).
 - Non-ASCII and invalid-wide Windows root identifiers across UNC, device, and generic verbatim prefixes: [Draft PR #54](https://github.com/hyfdev/sugar_path/pull/54).
 - Systematic `try_absolutize` parity, exact Windows root-relative results, and native-invalid ambient absolutization: [Draft PR #55](https://github.com/hyfdev/sugar_path/pull/55).
-- Cached-cwd relative behavior and failed-initialization retry: [Draft PR #56](https://github.com/hyfdev/sugar_path/pull/56).
-- Independent fixed oracles for consuming normalization across Unix, every Windows prefix kind, trailing separators, and native-invalid encoding: [Draft PR #57](https://github.com/hyfdev/sugar_path/pull/57).
+- Cached-cwd relative behavior and failed-initialization retry: [merged PR #56](https://github.com/hyfdev/sugar_path/pull/56).
+- Independent fixed oracles for consuming normalization across Unix, every Windows prefix kind, trailing separators, and native-invalid encoding: [merged PR #57](https://github.com/hyfdev/sugar_path/pull/57).
 
 ## Change rule
 
