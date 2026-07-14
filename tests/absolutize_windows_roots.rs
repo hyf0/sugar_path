@@ -34,7 +34,9 @@ fn windows_root_relative_inputs_use_the_exact_explicit_prefix() {
       r"\pkg\..\file\",
       r"\\?\UNC\Server\Share\file",
     ),
-    ("verbatim UNC root", r"\\?\UNC\Server\Share\workspace", r"\", r"\\?\UNC\Server\Share\"),
+    // A verbatim UNC prefix is already rooted and absolute without an explicit
+    // RootDir component, so resolution strips the optional trailing separator.
+    ("verbatim UNC root", r"\\?\UNC\Server\Share\workspace", r"\", r"\\?\UNC\Server\Share"),
   ];
 
   for (name, cwd, input, expected) in cases {
