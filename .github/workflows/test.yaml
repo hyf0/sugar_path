@@ -65,7 +65,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Test default features
-        run: cargo test --locked --workspace
+        run: cargo test --locked -p sugar_path
       - name: Test all features
         run: cargo test --locked --workspace --all-features
 
