@@ -1567,8 +1567,6 @@ fn windows_prefixes_eq_ignore_ascii_case(
   }
 }
 
-/// String-based relative path computation. Dispatches to the fast path when
-/// the component spelling is already canonical, otherwise normalizes first.
 #[cfg(all(target_os = "macos", target_arch = "aarch64", target_feature = "neon"))]
 fn relative_str<'a>(target: &'a str, base: &str) -> Cow<'a, str> {
   let target = target.trim_end_matches('/');
@@ -1617,8 +1615,7 @@ fn relative_str_suffix_validated<'a>(target: &'a str, base: &str) -> Cow<'a, str
 
   // Upward results are always owned. Shared dirty components normalize to the
   // same prefix on both sides, so only the unmatched suffixes can change the
-  // result. Zero-up cases without the component-prefix proof above still scan
-  // both full inputs.
+  // result. Non-prefix zero-up cases still scan both full inputs.
   let needs_normalization = if ups == 0 {
     needs_relative_normalization(target) || needs_relative_normalization(base)
   } else {
