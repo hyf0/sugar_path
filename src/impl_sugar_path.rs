@@ -1202,6 +1202,22 @@ fn needs_normalization(path: &Path, trailing: TrailingSeparator) -> bool {
   {
     return true;
   }
+  // A drive-relative path can keep unresolved leading parents. Skip the
+  // generic `\..` rejection when the entire tail is already in canonical
+  // leading-parent form, such as `C:..\..\foo`.
+  if bytes.len() >= 4
+    && bytes[1] == b':'
+    && bytes[0].is_ascii_alphabetic()
+    && bytes[2] == b'.'
+    && bytes[3] == b'.'
+    && (bytes.len() == 4 || bytes[4] == b'\\')
+  {
+    return !leading_parent_path_is_normalized(
+      &bytes[2..],
+      b'\\',
+      trailing == TrailingSeparator::Preserve,
+    );
+  }
   // A leading `.` needs normalization. A leading run of `..` can be clean when
   // every remaining component is normal (`...` and `.foo` are normal names).
   if bytes[0] == b'.' {

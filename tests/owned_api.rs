@@ -23,6 +23,8 @@ fn into_normalized_reuses_clean_owned_buffers() {
   let cases = [
     r"C:\workspace\rolldown\crates\rolldown\src\module_loader\module_task.rs",
     r"..\..\chunks\shared.js",
+    r"C:..\..",
+    r"c:..\..\chunks\shared.js",
   ];
 
   for input in cases {
