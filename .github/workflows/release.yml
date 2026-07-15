@@ -3,6 +3,11 @@ name: Release-plz
 permissions: {}
 
 on:
+  # A new main push starts a no-op run that cancels any release for the
+  # superseded commit before its Test workflow finishes.
+  push:
+    branches:
+      - main
   workflow_run:
     workflows:
       - Test
@@ -11,13 +16,20 @@ on:
     branches:
       - main
 
+concurrency:
+  # Keep release work for main single-threaded. Push-triggered runs have no
+  # eligible jobs, but they promptly cancel a release whose commit main replaced.
+  group: release-plz-main
+  cancel-in-progress: true
+
 jobs:
   # Release unpublished packages.
   release-plz-release:
     name: Release-plz release
     runs-on: ubuntu-latest
     if: >-
-      ${{ github.repository == 'hyfdev/sugar_path'
+      ${{ github.event_name == 'workflow_run'
+        && github.repository == 'hyfdev/sugar_path'
         && github.event.workflow_run.event == 'push'
         && github.event.workflow_run.conclusion == 'success'
         && github.event.workflow_run.head_branch == 'main'
@@ -47,6 +59,9 @@ jobs:
       - name: Install Rust toolchain
         if: ${{ steps.tested_main.outputs.current == 'true' }}
         uses: dtolnay/rust-toolchain@stable
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+        if: ${{ steps.tested_main.outputs.current == 'true' }}
       - name: Reconfirm tested main commit
         id: current_main
         if: ${{ steps.tested_main.outputs.current == 'true' }}
@@ -59,9 +74,6 @@ jobs:
             echo "current=false" >> "$GITHUB_OUTPUT"
             echo "::notice title=Superseded release::Main advanced while preparing the release; a newer Test run will handle it."
           fi
-      - uses: rust-lang/crates-io-auth-action@v1
-        id: auth
-        if: ${{ steps.current_main.outputs.current == 'true' }}
       - name: Run release-plz
         if: ${{ steps.current_main.outputs.current == 'true' }}
         uses: release-plz/action@v0.5
@@ -76,7 +88,8 @@ jobs:
     name: Release-plz PR
     runs-on: ubuntu-latest
     if: >-
-      ${{ github.repository == 'hyfdev/sugar_path'
+      ${{ github.event_name == 'workflow_run'
+        && github.repository == 'hyfdev/sugar_path'
         && github.event.workflow_run.event == 'push'
         && github.event.workflow_run.conclusion == 'success'
         && github.event.workflow_run.head_branch == 'main'
@@ -84,9 +97,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    concurrency:
-      group: release-plz-${{ github.event.workflow_run.head_branch }}
-      cancel-in-progress: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
