@@ -340,6 +340,32 @@ mod windows {
   }
 
   #[test]
+  fn drive_relative_common_prefix_compares_invalid_encoding_exactly() {
+    let same_base = invalid_path(r"C:..\segment-", r"\chunks");
+    let same_target = invalid_path(r"c:..\segment-", r"\assets");
+    let same_expected = r"..\assets".encode_utf16().collect::<Vec<_>>();
+    assert_wide(&same_target.relative(&same_base), &same_expected);
+    assert_wide(
+      &same_target
+        .try_relative(&same_base)
+        .expect("matching drive-relative contexts do not need cwd"),
+      &same_expected,
+    );
+    assert_wide(&same_target.relative_with(&same_base, "not/absolute"), &same_expected);
+
+    let base = invalid_path(r"C:..\segment-", r"\chunks");
+    let target = invalid_path_with_unit(r"c:..\segment-", DISTINCT_HIGH_SURROGATE, r"\assets");
+    let expected = wide_with_invalid_unit(r"..\..\segment-", DISTINCT_HIGH_SURROGATE, r"\assets");
+
+    assert_wide(&target.relative(&base), &expected);
+    assert_wide(
+      &target.try_relative(&base).expect("matching drive-relative contexts do not need cwd"),
+      &expected,
+    );
+    assert_wide(&target.relative_with(&base, "not/absolute"), &expected);
+  }
+
+  #[test]
   fn absolute_relative_common_prefix_compares_invalid_encoding_exactly() {
     let same_base = invalid_path(r"C:\workspace\segment-", r"\chunks");
     let same_target = invalid_path(r"C:\workspace\segment-", r"\assets");
@@ -406,5 +432,19 @@ mod windows {
     expected.push(LONE_HIGH_SURROGATE);
     expected.extend(r"\file".encode_utf16());
     assert_wide(&absolute, &expected);
+  }
+
+  #[test]
+  fn drive_relative_absolutize_with_preserves_invalid_wide_encoding() {
+    let input = invalid_path(r"C:pkg\invalid-", r"\.\file");
+    let expected = wide_with_invalid(r"C:\workspace\pkg\invalid-", r"\file");
+
+    let borrowed_cwd = input.absolutize_with(Path::new(r"C:\workspace"));
+    assert_wide(&borrowed_cwd, &expected);
+    assert!(matches!(borrowed_cwd, Cow::Owned(_)));
+
+    let owned_cwd = input.absolutize_with(PathBuf::from(r"C:\workspace"));
+    assert_wide(&owned_cwd, &expected);
+    assert!(matches!(owned_cwd, Cow::Owned(_)));
   }
 }
