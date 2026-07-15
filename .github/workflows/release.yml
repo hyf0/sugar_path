@@ -3,44 +3,94 @@ name: Release-plz
 permissions: {}
 
 on:
-  # A new main push starts a no-op run that cancels any release for the
-  # superseded commit before its Test workflow finishes.
   push:
-    branches:
-      - main
-  workflow_run:
-    workflows:
-      - Test
-    types:
-      - completed
     branches:
       - main
 
 concurrency:
-  # Keep release work for main single-threaded. Push-triggered runs have no
-  # eligible jobs, but they promptly cancel a release whose commit main replaced.
-  group: release-plz-main
+  # First attempts supersede older pushes; manual reruns are isolated by SHA so
+  # rerunning an old release cannot cancel the current main release.
+  group: ${{ github.run_attempt == 1 && 'release-plz-main' || format('release-plz-rerun-{0}', github.sha) }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  # Release unpublished packages.
+  tested-main:
+    name: Wait for successful Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The repository ID survives a rename or transfer; forks have a different ID.
+    if: ${{ github.repository_id == '470253326' }}
+    permissions:
+      actions: read
+    steps:
+      - name: Wait for exact main Test run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          deadline=$((SECONDS + 15 * 60))
+          while (( SECONDS < deadline )); do
+            response="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/test.yaml/runs" \
+              -f branch=main \
+              -f event=push \
+              -f head_sha="$TESTED_SHA" \
+              -f per_page=10)"
+            test_run="$(jq -c --arg repo "$GITHUB_REPOSITORY" --arg sha "$TESTED_SHA" '
+              [.workflow_runs[]
+                | select(
+                    .name == "Test"
+                    and .path == ".github/workflows/test.yaml"
+                    and .event == "push"
+                    and .head_branch == "main"
+                    and .head_sha == $sha
+                    and .head_repository.full_name == $repo
+                    and .repository.full_name == $repo
+                  )]
+              | sort_by(.created_at)
+              | .[-1] // empty
+            ' <<< "$response")"
+
+            if [[ -z "$test_run" ]]; then
+              echo "waiting for Test to register for main commit $TESTED_SHA"
+              sleep 10
+              continue
+            fi
+
+            status="$(jq -r '.status' <<< "$test_run")"
+            conclusion="$(jq -r '.conclusion // ""' <<< "$test_run")"
+            run_url="$(jq -r '.html_url' <<< "$test_run")"
+            if [[ "$status" == "completed" ]]; then
+              if [[ "$conclusion" == "success" ]]; then
+                echo "verified successful Test run: $run_url"
+                exit 0
+              fi
+              echo "::error title=Main Test did not pass::Test for $TESTED_SHA concluded $conclusion: $run_url"
+              exit 1
+            fi
+
+            echo "waiting for Test run $run_url (status: $status)"
+            sleep 10
+          done
+
+          echo "::error title=Main Test timed out::No successful completed Test run appeared for $TESTED_SHA within 15 minutes."
+          exit 1
+
+  # Release unpublished packages only after the exact main push passes Test.
   release-plz-release:
     name: Release-plz release
+    needs: tested-main
     runs-on: ubuntu-latest
-    if: >-
-      ${{ github.event_name == 'workflow_run'
-        && github.repository == 'hyfdev/sugar_path'
-        && github.event.workflow_run.event == 'push'
-        && github.event.workflow_run.conclusion == 'success'
-        && github.event.workflow_run.head_branch == 'main'
-        && github.event.workflow_run.head_repository.full_name == github.repository }}
     permissions:
       contents: write
       id-token: write
       pull-requests: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -48,35 +98,35 @@ jobs:
       - name: Verify tested main commit
         id: tested_main
         env:
-          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TESTED_SHA: ${{ github.sha }}
         run: |
           if [[ "$(git rev-parse HEAD)" == "$TESTED_SHA" ]]; then
             echo "current=true" >> "$GITHUB_OUTPUT"
           else
             echo "current=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Superseded release::The tested main commit is no longer current; a newer Test run will handle the release."
+            echo "::notice title=Superseded release::The tested main commit is no longer current; the newer push will handle the release."
           fi
       - name: Install Rust toolchain
         if: ${{ steps.tested_main.outputs.current == 'true' }}
-        uses: dtolnay/rust-toolchain@stable
-      - uses: rust-lang/crates-io-auth-action@v1
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
         id: auth
         if: ${{ steps.tested_main.outputs.current == 'true' }}
       - name: Reconfirm tested main commit
         id: current_main
         if: ${{ steps.tested_main.outputs.current == 'true' }}
         env:
-          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TESTED_SHA: ${{ github.sha }}
         run: |
           if [[ "$(git ls-remote --exit-code origin refs/heads/main | cut -f1)" == "$TESTED_SHA" ]]; then
             echo "current=true" >> "$GITHUB_OUTPUT"
           else
             echo "current=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Superseded release::Main advanced while preparing the release; a newer Test run will handle it."
+            echo "::notice title=Superseded release::Main advanced while preparing the release; the newer push will handle it."
           fi
       - name: Run release-plz
         if: ${{ steps.current_main.outputs.current == 'true' }}
-        uses: release-plz/action@v0.5
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
           command: release
         env:
@@ -86,20 +136,14 @@ jobs:
   # Create a PR with the new versions and changelog, preparing the next release.
   release-plz-pr:
     name: Release-plz PR
+    needs: tested-main
     runs-on: ubuntu-latest
-    if: >-
-      ${{ github.event_name == 'workflow_run'
-        && github.repository == 'hyfdev/sugar_path'
-        && github.event.workflow_run.event == 'push'
-        && github.event.workflow_run.conclusion == 'success'
-        && github.event.workflow_run.head_branch == 'main'
-        && github.event.workflow_run.head_repository.full_name == github.repository }}
     permissions:
       contents: write
       pull-requests: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -107,32 +151,32 @@ jobs:
       - name: Verify tested main commit
         id: tested_main
         env:
-          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TESTED_SHA: ${{ github.sha }}
         run: |
           if [[ "$(git rev-parse HEAD)" == "$TESTED_SHA" ]]; then
             echo "current=true" >> "$GITHUB_OUTPUT"
           else
             echo "current=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Superseded release PR::The tested main commit is no longer current; a newer Test run will update the release PR."
+            echo "::notice title=Superseded release PR::The tested main commit is no longer current; the newer push will update the release PR."
           fi
       - name: Install Rust toolchain
         if: ${{ steps.tested_main.outputs.current == 'true' }}
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
       - name: Reconfirm tested main commit
         id: current_main
         if: ${{ steps.tested_main.outputs.current == 'true' }}
         env:
-          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TESTED_SHA: ${{ github.sha }}
         run: |
           if [[ "$(git ls-remote --exit-code origin refs/heads/main | cut -f1)" == "$TESTED_SHA" ]]; then
             echo "current=true" >> "$GITHUB_OUTPUT"
           else
             echo "current=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Superseded release PR::Main advanced while preparing the release PR; a newer Test run will update it."
+            echo "::notice title=Superseded release PR::Main advanced while preparing the release PR; the newer push will update it."
           fi
       - name: Run release-plz
         if: ${{ steps.current_main.outputs.current == 'true' }}
-        uses: release-plz/action@v0.5
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
           command: release-pr
         env:
