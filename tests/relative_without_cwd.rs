@@ -37,6 +37,8 @@ fn cwd_independent_relative_inputs_do_not_read_the_current_directory() {
     assert!(
       Path::new("../../dist/assets/index.js").try_relative(Path::new("../dist/chunks")).is_err(),
     );
+    assert!("../../dist/assets/index.js".try_relative("../dist/chunks").is_err());
+    assert!(String::from("../../dist/assets/index.js").try_relative("../dist/chunks").is_err(),);
 
     let explicit = Path::new("../../dist/assets/index.js")
       .relative_with(Path::new("../dist/chunks"), Path::new("/"));

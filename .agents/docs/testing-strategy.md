@@ -9,7 +9,7 @@ SugarPath treats complete semantic coverage as a finite set of behavior partitio
 | Dimension | Required partitions |
 | --- | --- |
 | Public surface | Borrowed `Path`, known-UTF-8 `str` and deref receivers, and consuming `PathBuf` methods |
-| Platform | Linux and macOS Unix semantics, macOS ARM64 NEON dispatch, and Windows disk, root-relative, drive-relative, UNC, verbatim, device, and generic namespace forms |
+| Platform | Linux and macOS Unix semantics, macOS ARM64 NEON dispatch, Windows disk, root-relative, drive-relative, UNC, verbatim, device, and generic namespace forms, plus browser WebAssembly compilation and executable WASIp1 semantics |
 | Spelling | Empty, current directory, leading and interior parents, clean and dirty separators, trailing separators, roots, deep paths, and multibyte components |
 | Context | Cwd-independent, ambient-cwd-dependent, explicit borrowed cwd, explicit owned cwd, unused invalid cwd, unavailable ambient cwd, and cached cwd |
 | Encoding | Valid UTF-8 and native-invalid Unix bytes or Windows wide units, compared in their native representation |
@@ -21,8 +21,10 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 
 - Literal expected-output tables pin public behavior. One public method may be compared with another to test parity, but it is not an independent oracle; the covered partition must also have a literal expectation or a separate test oracle.
 - Generated tests must call the production dispatch as well as any private helper under review. A helper-only exhaustive test cannot prove that the public path still selects that helper.
-- Platform-gated coverage must not silently disappear. CI verifies the exact Rust host for Linux, Windows, and macOS ARM64, requires `neon` on macOS, and checks that a target-specific sentinel test is registered after the all-feature suite.
-- Default and all-feature coverage must remain distinct. CI declares the expected `cached_current_dir` state for each test command, and an executable sentinel rejects workspace feature unification in the default run.
+- Bounded generators must assert their expected corpus or comparison count. A reduced generation depth that leaves all remaining comparisons green is still a coverage failure.
+- Platform-gated coverage must not silently disappear. CI verifies the exact Rust host for Linux, Windows, and macOS ARM64, requires `neon` on macOS, and checks an explicit list of critical target-specific tests in both the default and `cached_current_dir` configurations.
+- WebAssembly support has two separate gates: `wasm32-unknown-unknown` compiles the production library with and without cwd caching, while `wasm32-wasip1` executes selected public contracts, native byte encoding, both cwd policies, and rustdoc examples under Wasmtime. These are correctness gates; WebAssembly is not a performance target.
+- Default and `cached_current_dir` production coverage must remain distinct. CI declares the expected feature state for each test command, and an executable sentinel rejects a missing expectation or workspace feature unification.
 - Exact native spelling and encoding are asserted directly. `Path` equality and lossy conversion are insufficient when trailing separators, drive spelling, or invalid encoding are observable.
 - `Cow` and consuming APIs assert ownership separately from value equality. A test that checks only output text does not protect the allocation-facing contract.
 
@@ -33,17 +35,20 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - `try_relative` and `relative_with` assert borrowed descendant and equal suffixes, owned upward and dirty results, owned cwd-resolved results, and receiver-only borrowing when base and cwd are owned temporaries.
 - An independent public `relative_with` model resolves its own root and component structures without calling SugarPath or `std::path::components`, then checks 40,368 Unix and 161,472 Windows combinations across clean and dirty native spellings. Its dirty absolute cwd contains `..`; Unix comparison is exact, while Windows roots and components compare with ASCII case ignored.
 - On macOS and Linux, all 224,676 pairs from the bounded short absolute spelling set plus the multibyte set are checked through the production `relative_str` dispatch and the suffix-validation helper against the slow component oracle.
-- Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, preserves the ambient error and panic checks for dependent calls, and proves that a valid explicit cwd still succeeds.
+- Absolute paths with native-invalid normal components prove that equal raw encoding cancels and distinct encoding with the same lossy rendering does not, through `relative`, `try_relative`, and `relative_with` on Unix and Windows.
+- Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, preserves the ambient error and panic checks for dependent `Path`, `str`, and `String` calls, and proves that a valid explicit cwd still succeeds.
+- Known-UTF-8 `str` and `String` receivers prove that clean normalize, absolutize, and descendant relative results borrow only from the receiver on Unix and Windows.
 
 ## Follow-up coverage status
 
-The remaining audit partitions are implemented in independent test-only PRs so each contract can be reviewed and merged separately:
+The audit partitions were implemented in independent test-only PRs so each contract could be reviewed and merged separately:
 
-- Slash receiver and policy coverage, including native-invalid recovery without making its storage identity a semantic requirement: [Draft PR #53](https://github.com/hyfdev/sugar_path/pull/53).
-- Non-ASCII and invalid-wide Windows root identifiers across UNC, device, and generic verbatim prefixes: [Draft PR #54](https://github.com/hyfdev/sugar_path/pull/54).
-- Systematic `try_absolutize` parity, exact Windows root-relative results, and native-invalid ambient absolutization: [Draft PR #55](https://github.com/hyfdev/sugar_path/pull/55).
+- Slash receiver and policy coverage, including native-invalid recovery without making its storage identity a semantic requirement: [merged PR #53](https://github.com/hyfdev/sugar_path/pull/53).
+- Non-ASCII and invalid-wide Windows root identifiers across UNC, device, and generic verbatim prefixes: [merged PR #54](https://github.com/hyfdev/sugar_path/pull/54).
+- Systematic `try_absolutize` parity, exact Windows root-relative results, and native-invalid ambient absolutization: [merged PR #55](https://github.com/hyfdev/sugar_path/pull/55).
 - Cached-cwd relative behavior and failed-initialization retry: [merged PR #56](https://github.com/hyfdev/sugar_path/pull/56).
 - Independent fixed oracles for consuming normalization across Unix, every Windows prefix kind, trailing separators, and native-invalid encoding: [merged PR #57](https://github.com/hyfdev/sugar_path/pull/57).
+- Independent bounded public relative semantics across clean and dirty path shapes: [merged PR #58](https://github.com/hyfdev/sugar_path/pull/58).
 
 ## Change rule
 
@@ -52,9 +57,13 @@ Any change to a public contract, platform branch, native-encoding comparison, cl
 ## Durable evidence
 
 - [Native CI target and sentinel checks](../../.github/workflows/test.yaml)
-- [Default/all-feature configuration sentinel](../../tests/feature_configuration.rs)
+- [WASIp1 public API contracts](../../tests/wasm_wasi_contracts.rs)
+- [WASIp1 cached cwd contract](../../tests/wasm_wasi_cached_current_dir.rs)
+- [Default/cached-current-directory configuration sentinel](../../tests/feature_configuration.rs)
 - [Fixed explicit and fallible relative matrices](../../tests/relative_lexical.rs)
 - [Independent bounded public relative model](../../tests/public_relative_model.rs)
 - [Relative ownership and lifetime contracts](../../tests/relative_borrowing.rs)
 - [Unavailable-cwd relative behavior](../../tests/relative_without_cwd.rs)
+- [Known-UTF-8 string receiver ownership](../../tests/string_receiver_contracts.rs)
+- [Native-invalid exact comparison](../../tests/invalid_encoding.rs)
 - [Production dispatch and short-path oracle](../../src/impl_sugar_path.rs)

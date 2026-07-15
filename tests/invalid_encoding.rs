@@ -22,6 +22,12 @@ mod unix {
     assert_eq!(actual.as_os_str().as_bytes(), expected);
   }
 
+  fn assert_relative_variants(target: &Path, base: &Path, expected: &[u8]) {
+    assert_bytes(&target.relative(base), expected);
+    assert_bytes(&target.try_relative(base).expect("absolute paths do not need cwd"), expected);
+    assert_bytes(&target.relative_with(base, Path::new("/")), expected);
+  }
+
   fn assert_normalizes_exactly_and_is_idempotent(input: &[u8], expected: &[u8]) {
     let once = path(input).normalize().into_owned();
     assert_bytes(&once, expected);
@@ -86,6 +92,18 @@ mod unix {
   }
 
   #[test]
+  fn absolute_relative_common_prefix_compares_invalid_encoding_exactly() {
+    let same_base = path(b"/workspace/segment-\x80/chunks");
+    let same_target = path(b"/workspace/segment-\x80/assets");
+    assert_relative_variants(&same_target, &same_base, b"../assets");
+
+    assert_eq!(path(b"segment-\x80").to_string_lossy(), path(b"segment-\x81").to_string_lossy());
+    let distinct_base = path(b"/workspace/segment-\x80/chunks");
+    let distinct_target = path(b"/workspace/segment-\x81/assets");
+    assert_relative_variants(&distinct_target, &distinct_base, b"../../segment-\x81/assets");
+  }
+
+  #[test]
   fn non_utf8_slash_policies_preserve_non_normalized_spelling() {
     let input = path(b"./dir//invalid-\x80/../tail/");
     let expected = "./dir//invalid-\u{fffd}/../tail/";
@@ -118,6 +136,7 @@ mod windows {
   use super::*;
 
   const LONE_HIGH_SURROGATE: u16 = 0xd800;
+  const DISTINCT_HIGH_SURROGATE: u16 = 0xd801;
 
   fn wide_with_invalid(prefix: &str, suffix: &str) -> Vec<u16> {
     wide_with_invalid_unit(prefix, LONE_HIGH_SURROGATE, suffix)
@@ -144,6 +163,12 @@ mod windows {
 
   fn assert_wide(actual: &Path, expected: &[u16]) {
     assert_eq!(actual.as_os_str().encode_wide().collect::<Vec<_>>(), expected);
+  }
+
+  fn assert_relative_variants(target: &Path, base: &Path, expected: &[u16]) {
+    assert_wide(&target.relative(base), expected);
+    assert_wide(&target.try_relative(base).expect("absolute paths do not need cwd"), expected);
+    assert_wide(&target.relative_with(base, Path::new(r"C:\unused")), expected);
   }
 
   fn assert_relative_cases(cases: &[(&str, &str, &str, &str)]) {
@@ -288,7 +313,6 @@ mod windows {
       &r"..\assets".encode_utf16().collect::<Vec<_>>(),
     );
 
-    const DISTINCT_HIGH_SURROGATE: u16 = 0xd801;
     assert_eq!(
       invalid_path("segment-", "").to_string_lossy(),
       invalid_path_with_unit("segment-", DISTINCT_HIGH_SURROGATE, "").to_string_lossy(),
@@ -298,6 +322,27 @@ mod windows {
       invalid_path_with_unit(r"..\..\dist\segment-", DISTINCT_HIGH_SURROGATE, r"\assets");
     let expected = wide_with_invalid_unit(r"..\..\segment-", DISTINCT_HIGH_SURROGATE, r"\assets");
     assert_wide(&distinct_target.relative(&distinct_base), &expected);
+  }
+
+  #[test]
+  fn absolute_relative_common_prefix_compares_invalid_encoding_exactly() {
+    let same_base = invalid_path(r"C:\workspace\segment-", r"\chunks");
+    let same_target = invalid_path(r"C:\workspace\segment-", r"\assets");
+    assert_relative_variants(
+      &same_target,
+      &same_base,
+      &r"..\assets".encode_utf16().collect::<Vec<_>>(),
+    );
+
+    assert_eq!(
+      invalid_path("segment-", "").to_string_lossy(),
+      invalid_path_with_unit("segment-", DISTINCT_HIGH_SURROGATE, "").to_string_lossy(),
+    );
+    let distinct_base = invalid_path(r"C:\workspace\segment-", r"\chunks");
+    let distinct_target =
+      invalid_path_with_unit(r"C:\workspace\segment-", DISTINCT_HIGH_SURROGATE, r"\assets");
+    let expected = wide_with_invalid_unit(r"..\..\segment-", DISTINCT_HIGH_SURROGATE, r"\assets");
+    assert_relative_variants(&distinct_target, &distinct_base, &expected);
   }
 
   #[test]
