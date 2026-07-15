@@ -310,7 +310,15 @@ fn windows_dirty_paths_return_owned_cow() {
 #[cfg(target_family = "windows")]
 #[test]
 fn windows_canonical_leading_parent_paths_return_borrowed_cow() {
-  for path in [r"..", r"..\", r"..\foo", r"..\foo\", r"..\..\chunks\shared.js"] {
+  for path in [
+    r"..",
+    r"..\",
+    r"..\foo",
+    r"..\foo\",
+    r"..\..\chunks\shared.js",
+    r"C:..\..",
+    r"c:..\..\chunks\shared.js",
+  ] {
     let input = p!(path);
     let normalized = input.normalize();
     let Cow::Borrowed(borrowed) = normalized else {
@@ -328,6 +336,7 @@ fn windows_dirty_leading_parent_paths_return_owned_cow() {
     (r"..\foo\..", r".."),
     (r"..\foo\\bar", r"..\foo\bar"),
     (r"..\..\foo\..\bar", r"..\..\bar"),
+    (r"C:..\foo\..", r"C:.."),
   ] {
     let normalized = p!(path).normalize();
     assert!(matches!(normalized, Cow::Owned(_)), "expected owned Cow for dirty path {path:?}");

@@ -60,6 +60,7 @@ jobs:
             expected_tests: |-
               impl_sugar_path::relative_str_tests::production_dispatch_and_suffix_validation_match_short_path_oracle
               impl_sugar_path::normalization_classifier_tests::unix_classifier_matches_full_normalizer_for_short_arbitrary_bytes
+              public_normalize_matches_the_bounded_independent_model
               public_relative_with_matches_the_bounded_independent_model
               unix::absolute_relative_common_prefix_compares_invalid_encoding_exactly
               utf8_string_receivers_borrow_only_from_the_receiver
@@ -75,6 +76,7 @@ jobs:
             expected_tests: |-
               windows_relative_with_has_fixed_context_results
               impl_sugar_path::normalization_classifier_tests::windows_classifier_matches_full_normalizer_for_short_arbitrary_wide_units
+              public_normalize_matches_the_bounded_independent_model
               public_relative_with_matches_the_bounded_independent_model
               encoded_root_identifiers_compare_only_ascii_case_and_exact_native_units
               absolutization_preserves_encoded_root_identifiers
@@ -89,6 +91,7 @@ jobs:
             expected_tests: |-
               absolute_relative_paths_cross_neon_block_boundaries_exactly
               impl_sugar_path::normalization_classifier_tests::unix_classifier_matches_full_normalizer_for_short_arbitrary_bytes
+              public_normalize_matches_the_bounded_independent_model
               public_relative_with_matches_the_bounded_independent_model
               unix::absolute_relative_common_prefix_compares_invalid_encoding_exactly
               utf8_string_receivers_borrow_only_from_the_receiver

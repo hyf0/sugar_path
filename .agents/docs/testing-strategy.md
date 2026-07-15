@@ -28,6 +28,10 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - Exact native spelling and encoding are asserted directly. `Path` equality and lossy conversion are insufficient when trailing separators, drive spelling, or invalid encoding are observable.
 - `Cow` and consuming APIs assert ownership separately from value equality. A test that checks only output text does not protect the allocation-facing contract.
 
+## Normalization coverage checkpoint
+
+- An independent public normalization model resolves its own root and component stack without calling SugarPath or `std::path::components`, then checks exact non-consuming and consuming results plus the non-consuming `Cow` contract for 6,560 Unix and 14,040 Windows inputs. The corpus crosses relative and rooted forms, drive-relative Windows paths, clean, redundant, forward-slash Windows and trailing separators, parents, current-directory components, dot-prefixed ordinary names, case-sensitive spelling, multibyte names, and Unix backslashes as ordinary bytes.
+
 ## Relative-path coverage checkpoint
 
 - `relative_with` has fixed Unix and Windows expected-output matrices for relative, absolute, mixed-context, dirty, equal, root-clamped, trailing-separator, root-relative, drive-relative, and different-drive results, using both borrowed and owned cwd arguments.
@@ -63,6 +67,7 @@ Any change to a public contract, platform branch, native-encoding comparison, cl
 - [Default/cached-current-directory configuration sentinel](../../tests/feature_configuration.rs)
 - [Fixed explicit and fallible relative matrices](../../tests/relative_lexical.rs)
 - [Independent bounded public relative model](../../tests/public_relative_model.rs)
+- [Independent bounded public normalization model](../../tests/public_normalize_model.rs)
 - [Relative ownership and lifetime contracts](../../tests/relative_borrowing.rs)
 - [Unavailable-cwd relative behavior](../../tests/relative_without_cwd.rs)
 - [Known-UTF-8 string receiver ownership](../../tests/string_receiver_contracts.rs)
