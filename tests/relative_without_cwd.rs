@@ -40,6 +40,12 @@ fn cwd_independent_relative_inputs_do_not_read_the_current_directory() {
     assert!("../../dist/assets/index.js".try_relative("../dist/chunks").is_err());
     assert!(String::from("../../dist/assets/index.js").try_relative("../dist/chunks").is_err(),);
 
+    let absolute_string = String::from("/workspace/src");
+    let absolute_relative =
+      absolute_string.try_relative("/workspace").expect("absolute String paths do not need cwd");
+    assert_eq!(absolute_relative.as_os_str(), Path::new("src").as_os_str());
+    assert!(matches!(absolute_relative, Cow::Borrowed(_)));
+
     let explicit = Path::new("../../dist/assets/index.js")
       .relative_with(Path::new("../dist/chunks"), Path::new("/"));
     assert_eq!(explicit.as_os_str(), Path::new("../assets/index.js").as_os_str());
@@ -49,6 +55,14 @@ fn cwd_independent_relative_inputs_do_not_read_the_current_directory() {
       Path::new("../../dist/assets/index.js").relative(Path::new("../dist/chunks"))
     }));
     assert!(cwd_dependent.is_err(), "unequal leading parents must retain the cwd fallback");
+    let string_cwd_dependent = catch_unwind(AssertUnwindSafe(|| {
+      let input = String::from("../../dist/assets/index.js");
+      drop(input.relative("../dist/chunks"));
+    }));
+    assert!(
+      string_cwd_dependent.is_err(),
+      "cwd-dependent String relative must preserve the strict panic contract",
+    );
     return;
   }
 

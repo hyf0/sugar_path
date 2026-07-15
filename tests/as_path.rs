@@ -2,6 +2,15 @@ use std::path::Path;
 use sugar_path::SugarPath;
 
 #[test]
+fn path_receiver_returns_the_same_view() {
+  let receiver = Path::new("hello/world");
+  let viewed = SugarPath::as_path(receiver);
+
+  assert_eq!(viewed, receiver);
+  assert!(std::ptr::eq(viewed, receiver));
+}
+
+#[test]
 fn test_as_path_on_str() {
   // Test that as_path() converts &str to Path correctly
   let string_path = "foo/bar/baz";

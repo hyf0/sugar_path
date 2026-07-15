@@ -76,6 +76,15 @@ fn pure_relative_calls_initialize_and_observe_cwd_policy() {
     &expected,
     "unequal-parent pair observes cwd policy",
   );
+  let string_target = String::from("../second/string-target.js");
+  let string_relative = string_target.relative(relative_base);
+  let expected_string = if cfg!(feature = "cached_current_dir") {
+    PathBuf::from("..").join("string-target.js")
+  } else {
+    PathBuf::from("..").join("..").join("second").join("string-target.js")
+  };
+  assert_eq!(string_relative.as_os_str(), expected_string.as_os_str());
+  assert!(matches!(string_relative, Cow::Owned(_)), "cwd-resolved String relative should own");
 
   let expected_slash = if cfg!(feature = "cached_current_dir") {
     "../relative-target.js"

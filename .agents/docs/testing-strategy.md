@@ -37,7 +37,7 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - On macOS and Linux, all 224,676 pairs from the bounded short absolute spelling set plus the multibyte set are checked through the production `relative_str` dispatch and the suffix-validation helper against the slow component oracle.
 - Absolute paths with native-invalid normal components prove that equal raw encoding cancels and distinct encoding with the same lossy rendering does not, through `relative`, `try_relative`, and `relative_with` on Unix and Windows.
 - Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, preserves the ambient error and panic checks for dependent `Path`, `str`, and `String` calls, and proves that a valid explicit cwd still succeeds.
-- Known-UTF-8 `str` and `String` receivers prove that clean normalize, absolutize, and descendant relative results borrow only from the receiver on Unix and Windows.
+- Known-UTF-8 `str` and `String` receivers prove exact clean-trailing and dirty normalization contracts, receiver-only borrowing, explicit and ambient relative context forwarding, and cached-cwd behavior on Unix and Windows. Unix deleted-cwd rows also prove cwd-independent success and strict cwd-dependent panics for string receivers.
 
 ## Follow-up coverage status
 

@@ -38,6 +38,25 @@ fn absolute_paths_do_not_require_current_directory() {
     assert!("relative.js".try_absolutize().is_err());
     assert!(String::from("relative.js").try_absolutize().is_err());
     assert!(std::panic::catch_unwind(|| Path::new("relative.js").absolutize()).is_err());
+    assert!(
+      std::panic::catch_unwind(|| {
+        let input = String::from("relative.js");
+        drop(input.absolutize());
+      })
+      .is_err(),
+    );
+
+    let clean_string = String::from("/sugar-path/string.js");
+    let clean_string_output =
+      clean_string.try_absolutize().expect("clean absolute String should not read cwd");
+    assert_eq!(clean_string_output.as_os_str(), Path::new("/sugar-path/string.js").as_os_str());
+    assert!(matches!(clean_string_output, Cow::Borrowed(_)));
+
+    let dirty_string = String::from("/sugar-path/../string.js/");
+    let dirty_string_output =
+      dirty_string.try_absolutize().expect("dirty absolute String should not read cwd");
+    assert_eq!(dirty_string_output.as_os_str(), Path::new("/string.js").as_os_str());
+    assert!(matches!(dirty_string_output, Cow::Owned(_)));
     return;
   }
 
