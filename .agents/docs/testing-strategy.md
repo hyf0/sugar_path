@@ -43,6 +43,7 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - Windows drive-relative rows apply the same exact comparison before shared-context cancellation and preserve invalid-wide components while resolving against explicit borrowed and owned cwd arguments.
 - Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, preserves the ambient error and panic checks for dependent `Path`, `str`, and `String` calls, and proves that a valid explicit cwd still succeeds.
 - Known-UTF-8 `str` and `String` receivers prove exact clean-trailing and dirty normalization contracts, receiver-only borrowing, explicit and ambient relative context forwarding, and cached-cwd behavior on Unix and Windows. Unix deleted-cwd rows also prove cwd-independent success and strict cwd-dependent panics for string receivers.
+- A Linux child process starts in a real cwd containing an invalid native byte and requires `absolutize`, `try_absolutize`, `relative`, and `try_relative` to preserve that byte exactly under both cwd policies. Linux supplies this executable filesystem case because macOS rejects the invalid-byte directory name; explicit-cwd tests continue to cover native-invalid Unix composition independently of the host filesystem.
 
 ## Follow-up coverage status
 
@@ -71,5 +72,6 @@ Any change to a public contract, platform branch, native-encoding comparison, cl
 - [Relative ownership and lifetime contracts](../../tests/relative_borrowing.rs)
 - [Unavailable-cwd relative behavior](../../tests/relative_without_cwd.rs)
 - [Known-UTF-8 string receiver ownership](../../tests/string_receiver_contracts.rs)
+- [Native-invalid ambient cwd preservation](../../tests/non_utf8_ambient_cwd.rs)
 - [Native-invalid exact comparison](../../tests/invalid_encoding.rs)
 - [Production dispatch and short-path oracle](../../src/impl_sugar_path.rs)
