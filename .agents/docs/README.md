@@ -28,3 +28,4 @@ Use this map to load only the context that bears on the work in front of you. Al
 - Historical Windows-GNU Docker/Wine reproduction → [Local Docker validation is opt-in](./conventions.md#local-docker-validation-is-opt-in) and [Windows GNU local execution gate](../../benchmarks/windows-gnu.md#local-execution-gate).
 - Performance strategy, baseline changes, Rolldown workloads, allocation work, or API performance → [Performance strategy](./performance-strategy.md).
 - Test fixtures, assertions, generated cases, or platform test coverage → [Testing conventions](./conventions.md) and [Semantic test strategy](./testing-strategy.md).
+- Release-plz, crates.io trusted publishing, or post-merge test sequencing → [Tested release workflow](./release.md).
