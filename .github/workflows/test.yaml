@@ -198,26 +198,26 @@ jobs:
           echo "CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime --dir=$RUNNER_TEMP/sugar-path-wasi-a::/sugar-path-wasi-a --dir=$RUNNER_TEMP/sugar-path-wasi-b::/sugar-path-wasi-b --env SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR" >> "$GITHUB_ENV"
       - name: Clippy WASI tests
         run: |
-          cargo clippy --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- -D warnings
-          cargo clippy --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- -D warnings
+          cargo clippy --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test 'wasm_wasi_*' --test feature_configuration -- -D warnings
+          cargo clippy --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test 'wasm_wasi_*' --test feature_configuration -- -D warnings
       - name: Test WASI default features
         env:
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "0"
-        run: cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration
+        run: cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test 'wasm_wasi_*' --test feature_configuration
       - name: Test WASI cached current directory
         env:
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
-        run: cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration
+        run: cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test 'wasm_wasi_*' --test feature_configuration
       - name: Test WASI documentation
         env:
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
         run: cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --doc
       - name: Verify WASI test registration and execution
         run: |
-          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=0 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --list > target/wasi-default-tests.txt
-          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --list > target/wasi-cached-tests.txt
-          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=0 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --ignored --list > target/wasi-default-ignored-tests.txt
-          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --ignored --list > target/wasi-cached-ignored-tests.txt
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=0 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test 'wasm_wasi_*' --test feature_configuration -- --list > target/wasi-default-tests.txt
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test 'wasm_wasi_*' --test feature_configuration -- --list > target/wasi-cached-tests.txt
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=0 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test 'wasm_wasi_*' --test feature_configuration -- --ignored --list > target/wasi-default-ignored-tests.txt
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test 'wasm_wasi_*' --test feature_configuration -- --ignored --list > target/wasi-cached-ignored-tests.txt
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --doc -- --ignored --list > target/wasi-cached-ignored-doc-tests.txt
           for registered_tests in target/wasi-default-tests.txt target/wasi-cached-tests.txt; do
             for expected_test in \
