@@ -92,6 +92,10 @@ fn current_directory_is_cached_only_when_requested() {
     "relative base observes cwd policy",
   );
   assert_eq!(Path::new("entry.js").absolutize(), expected_base.join("entry.js"));
+  let string_entry = String::from("string-entry.js");
+  let string_absolute = string_entry.absolutize();
+  assert_eq!(string_absolute.as_os_str(), expected_base.join("string-entry.js").as_os_str());
+  assert!(matches!(string_absolute, Cow::Owned(_)), "relative String absolutize should own");
 
   #[cfg(target_family = "windows")]
   {

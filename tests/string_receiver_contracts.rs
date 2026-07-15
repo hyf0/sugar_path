@@ -27,6 +27,11 @@ fn assert_borrowed_from_receiver(
   );
 }
 
+fn assert_owned_result(result: Cow<'_, Path>, expected: &Path, context: &str) {
+  assert_eq!(result.as_os_str(), expected.as_os_str(), "{context}");
+  assert!(matches!(result, Cow::Owned(_)), "{context}: expected an owned result");
+}
+
 fn assert_receiver_contracts(input: &str, base: &str, expected_relative: &str, label: &str) {
   let receiver = Path::new(input);
   assert_borrowed_from_receiver(
@@ -129,5 +134,49 @@ fn utf8_string_receivers_borrow_only_from_the_receiver() {
     r"c:\workspace\β",
     r"src\lib.rs",
     "Windows",
+  );
+}
+
+#[test]
+fn utf8_string_normalize_covers_trailing_and_dirty_spelling() {
+  #[cfg(target_family = "unix")]
+  let (clean, dirty, normalized) = ("workspace/src/", "./workspace/src", "workspace/src");
+  #[cfg(target_family = "windows")]
+  let (clean, dirty, normalized) = (r"workspace\src\", r".\workspace\src", r"workspace\src");
+
+  assert_borrowed_from_receiver(
+    Path::new(clean),
+    clean.normalize(),
+    Path::new(clean),
+    "clean trailing str normalize",
+  );
+  let clean_owned = clean.to_owned();
+  assert_borrowed_from_receiver(
+    Path::new(&clean_owned),
+    clean_owned.normalize(),
+    Path::new(clean),
+    "clean trailing String normalize",
+  );
+
+  assert_owned_result(dirty.normalize(), Path::new(normalized), "dirty str normalize");
+  let dirty_owned = dirty.to_owned();
+  assert_owned_result(dirty_owned.normalize(), Path::new(normalized), "dirty String normalize");
+}
+
+#[test]
+fn utf8_string_receivers_forward_explicit_relative_context() {
+  #[cfg(target_family = "unix")]
+  let (target, base, cwd, expected) =
+    ("target", "/workspace/base", "/workspace/project", "../project/target");
+  #[cfg(target_family = "windows")]
+  let (target, base, cwd, expected) =
+    (r"target", r"C:\workspace\base", r"C:\workspace\project", r"..\project\target");
+
+  assert_owned_result(target.relative_with(base, cwd), Path::new(expected), "str relative_with");
+  let target = target.to_owned();
+  assert_owned_result(
+    target.relative_with(base, cwd.to_owned()),
+    Path::new(expected),
+    "String relative_with",
   );
 }
