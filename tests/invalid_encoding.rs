@@ -123,6 +123,21 @@ mod unix {
 
     assert_bytes(&absolute, b"/workspace/base-\x81/pkg/input-\x80/file");
   }
+
+  #[test]
+  fn relative_with_preserves_invalid_bytes_in_cwd() {
+    let cwd = path(b"/anchor/invalid-\x80/leaf");
+    let target = Path::new("../target");
+    let base = Path::new("../../base");
+
+    let borrowed_cwd = target.relative_with(base, cwd.as_path());
+    assert_bytes(&borrowed_cwd, b"../invalid-\x80/target");
+    assert!(matches!(borrowed_cwd, Cow::Owned(_)));
+
+    let owned_cwd = target.relative_with(base, cwd);
+    assert_bytes(&owned_cwd, b"../invalid-\x80/target");
+    assert!(matches!(owned_cwd, Cow::Owned(_)));
+  }
 }
 
 #[cfg(windows)]
