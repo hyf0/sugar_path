@@ -121,6 +121,10 @@ jobs:
             echo "Rust host $EXPECTED_HOST is missing target feature $REQUIRED_TARGET_FEATURE"
             exit 1
           fi
+      - name: Verify native package artifact
+        run: |
+          cargo package --locked -p sugar_path
+          cargo package --locked -p sugar_path --features cached_current_dir
       # Clippy stays on each OS: platform-gated imports only fail under that target.
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
@@ -178,6 +182,12 @@ jobs:
         run: |
           cargo check --locked -p sugar_path --lib --target wasm32-unknown-unknown --no-default-features
           cargo check --locked -p sugar_path --lib --target wasm32-unknown-unknown --no-default-features --features cached_current_dir
+      - name: Verify WebAssembly package artifacts
+        run: |
+          cargo package --locked -p sugar_path --target wasm32-unknown-unknown --no-default-features
+          cargo package --locked -p sugar_path --target wasm32-unknown-unknown --no-default-features --features cached_current_dir
+          cargo package --locked -p sugar_path --target wasm32-wasip1 --no-default-features
+          cargo package --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir
       - name: Install Wasmtime
         uses: bytecodealliance/actions/wasmtime/setup@9152e710e9f7182e4c29ad218e4f335a7b203613 # v1
         with:
