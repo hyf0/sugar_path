@@ -132,12 +132,16 @@ jobs:
         env:
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
         run: cargo test --locked --workspace --features cached_current_dir
-      - name: Verify platform-specific test registration
+      - name: Verify platform-specific test registration and execution
         env:
           EXPECTED_TESTS: ${{ matrix.expected_tests }}
         run: |
           cargo test --locked -p sugar_path --lib --tests -- --list > target/default-tests.txt
           cargo test --locked -p sugar_path --features cached_current_dir --lib --tests -- --list > target/cached-tests.txt
+          cargo test --locked -p sugar_path --lib --tests -- --ignored --list > target/default-ignored-tests.txt
+          cargo test --locked --workspace --features cached_current_dir --lib --bins --tests -- --ignored --list > target/cached-ignored-tests.txt
+          cargo test --locked -p sugar_path --doc -- --ignored --list > target/default-ignored-doc-tests.txt
+          cargo test --locked --workspace --features cached_current_dir --doc -- --ignored --list > target/cached-ignored-doc-tests.txt
           for registered_tests in target/default-tests.txt target/cached-tests.txt; do
             while IFS= read -r expected_test; do
               if ! grep -Fqx "$expected_test: test" "$registered_tests"; then
@@ -146,6 +150,17 @@ jobs:
                 exit 1
               fi
             done <<< "$EXPECTED_TESTS"
+          done
+          for ignored_tests in \
+            target/default-ignored-tests.txt \
+            target/cached-ignored-tests.txt \
+            target/default-ignored-doc-tests.txt \
+            target/cached-ignored-doc-tests.txt; do
+            if grep -Eq ': test$' "$ignored_tests"; then
+              echo "registered tests must not be ignored in $ignored_tests"
+              cat "$ignored_tests"
+              exit 1
+            fi
           done
 
   wasm:
@@ -187,10 +202,13 @@ jobs:
         env:
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR: "1"
         run: cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --doc
-      - name: Verify WASI test registration
+      - name: Verify WASI test registration and execution
         run: |
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=0 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --list > target/wasi-default-tests.txt
           SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --list > target/wasi-cached-tests.txt
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=0 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --ignored --list > target/wasi-default-ignored-tests.txt
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --test wasm_wasi_contracts --test wasm_wasi_cached_current_dir --test feature_configuration -- --ignored --list > target/wasi-cached-ignored-tests.txt
+          SUGAR_PATH_EXPECT_CACHED_CURRENT_DIR=1 cargo test --locked -p sugar_path --target wasm32-wasip1 --no-default-features --features cached_current_dir --doc -- --ignored --list > target/wasi-cached-ignored-doc-tests.txt
           for registered_tests in target/wasi-default-tests.txt target/wasi-cached-tests.txt; do
             for expected_test in \
               normalize_preserves_wasi_spelling_and_native_encoding \
@@ -206,6 +224,16 @@ jobs:
                 exit 1
               fi
             done
+          done
+          for ignored_tests in \
+            target/wasi-default-ignored-tests.txt \
+            target/wasi-cached-ignored-tests.txt \
+            target/wasi-cached-ignored-doc-tests.txt; do
+            if grep -Eq ': test$' "$ignored_tests"; then
+              echo "registered WASI tests must not be ignored in $ignored_tests"
+              cat "$ignored_tests"
+              exit 1
+            fi
           done
 
   # Continuous gate: Linux + Windows only. The tracker always measures the
