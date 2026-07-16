@@ -61,9 +61,11 @@ jobs:
               impl_sugar_path::relative_str_tests::production_dispatch_and_suffix_validation_match_short_path_oracle
               impl_sugar_path::normalization_classifier_tests::unix_classifier_matches_full_normalizer_for_short_arbitrary_bytes
               public_normalize_matches_the_bounded_independent_model
+              normalization_is_exactly_idempotent
               public_relative_with_matches_the_bounded_independent_model
               unix::absolute_relative_common_prefix_compares_invalid_encoding_exactly
               utf8_string_receivers_borrow_only_from_the_receiver
+              unix_path_equality_does_not_define_normalized_spelling
               absolute_paths_do_not_require_current_directory
               cwd_independent_relative_inputs_do_not_read_the_current_directory
               current_directory_is_cached_only_when_requested
@@ -78,11 +80,14 @@ jobs:
               windows_relative_with_has_fixed_context_results
               impl_sugar_path::normalization_classifier_tests::windows_classifier_matches_full_normalizer_for_short_arbitrary_wide_units
               public_normalize_matches_the_bounded_independent_model
+              normalization_is_exactly_idempotent
               public_relative_with_matches_the_bounded_independent_model
               encoded_root_identifiers_compare_only_ascii_case_and_exact_native_units
               absolutization_preserves_encoded_root_identifiers
               windows::absolute_relative_common_prefix_compares_invalid_encoding_exactly
               utf8_string_receivers_borrow_only_from_the_receiver
+              windows_path_equality_does_not_define_normalized_spelling
+              windows_prefix_like_normal_components_remain_exactly_idempotent
               current_directory_is_cached_only_when_requested
               pure_relative_calls_initialize_and_observe_cwd_policy
               requested_cached_current_dir_configuration_is_active
@@ -93,9 +98,11 @@ jobs:
               absolute_relative_paths_cross_neon_block_boundaries_exactly
               impl_sugar_path::normalization_classifier_tests::unix_classifier_matches_full_normalizer_for_short_arbitrary_bytes
               public_normalize_matches_the_bounded_independent_model
+              normalization_is_exactly_idempotent
               public_relative_with_matches_the_bounded_independent_model
               unix::absolute_relative_common_prefix_compares_invalid_encoding_exactly
               utf8_string_receivers_borrow_only_from_the_receiver
+              unix_path_equality_does_not_define_normalized_spelling
               absolute_paths_do_not_require_current_directory
               cwd_independent_relative_inputs_do_not_read_the_current_directory
               current_directory_is_cached_only_when_requested

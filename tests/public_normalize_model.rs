@@ -343,6 +343,14 @@ fn public_normalize_matches_the_bounded_independent_model() {
         expected.as_os_str(),
         non_consuming.as_os_str(),
       );
+      assert_eq!(
+        non_consuming.normalize().as_os_str(),
+        non_consuming.as_os_str(),
+        "non-consuming idempotence: platform={}; mode={}; case={case:?}; input={input:?}; normalized={:?}",
+        platform_name(),
+        mode.name,
+        non_consuming.as_os_str(),
+      );
 
       let input_is_expected = receiver.as_os_str() == expected.as_os_str();
       let expected_is_static_dot = expected.as_os_str() == Path::new(".").as_os_str();
@@ -379,6 +387,14 @@ fn public_normalize_matches_the_bounded_independent_model() {
         platform_name(),
         mode.name,
         expected.as_os_str(),
+        consumed.as_os_str(),
+      );
+      assert_eq!(
+        consumed.clone().into_normalized().as_os_str(),
+        consumed.as_os_str(),
+        "consuming idempotence: platform={}; mode={}; case={case:?}; input={input:?}; normalized={:?}",
+        platform_name(),
+        mode.name,
         consumed.as_os_str(),
       );
     }

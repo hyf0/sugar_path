@@ -1,8 +1,48 @@
 #![cfg(any(unix, windows))]
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use sugar_path::SugarPath;
+use sugar_path::{SugarPath, SugarPathBuf};
+
+fn assert_exact_normalization(input: &str, expected: &str) {
+  let expected = Path::new(expected);
+  let normalized = Path::new(input).normalize();
+  assert_eq!(
+    normalized.as_os_str(),
+    expected.as_os_str(),
+    "normalizing {input:?} produced the wrong exact spelling",
+  );
+  assert_eq!(
+    normalized.normalize().as_os_str(),
+    normalized.as_os_str(),
+    "normalizing {input:?} a second time changed its representation",
+  );
+
+  let consumed = PathBuf::from(input).into_normalized();
+  assert_eq!(
+    consumed.as_os_str(),
+    expected.as_os_str(),
+    "consuming normalization of {input:?} produced the wrong exact spelling",
+  );
+  assert_eq!(
+    consumed.clone().into_normalized().as_os_str(),
+    consumed.as_os_str(),
+    "consuming normalization of {input:?} was not exactly idempotent",
+  );
+}
+
+fn assert_path_equal_spellings_remain_distinct(left: &str, right: &str) {
+  let left_path = Path::new(left);
+  let right_path = Path::new(right);
+  assert_eq!(left_path, right_path, "the fixture must compare equal as standard Path values");
+  assert_ne!(
+    left_path.as_os_str(),
+    right_path.as_os_str(),
+    "the fixture must retain distinct native spellings",
+  );
+  assert_exact_normalization(left, left);
+  assert_exact_normalization(right, right);
+}
 
 fn assert_normalization_is_idempotent(paths: &[&str]) {
   for path in paths {
@@ -101,12 +141,10 @@ fn unix_node_style_trailing_spelling_is_exact() {
 
 #[cfg(unix)]
 #[test]
-fn path_equal_trailing_spellings_may_normalize_differently() {
-  let plain = Path::new("foo");
-  let trailing = Path::new("foo/");
-  assert_eq!(plain, trailing);
-  assert_eq!(plain.normalize().as_os_str(), Path::new("foo").as_os_str());
-  assert_eq!(trailing.normalize().as_os_str(), Path::new("foo/").as_os_str());
+fn unix_path_equality_does_not_define_normalized_spelling() {
+  for (plain, trailing) in [(".", "./"), ("foo", "foo/")] {
+    assert_path_equal_spellings_remain_distinct(plain, trailing);
+  }
 }
 
 #[cfg(windows)]
@@ -129,5 +167,21 @@ fn windows_node_style_trailing_and_drive_spelling_is_exact() {
     (r"\\?\c:\foo\", r"\\?\c:\foo\"),
   ] {
     assert_eq!(Path::new(input).normalize().as_os_str(), Path::new(expected).as_os_str());
+  }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_path_equality_does_not_define_normalized_spelling() {
+  for (left, right) in [(".", r".\"), ("foo", r"foo\"), (r"C:\foo", r"c:\foo")] {
+    assert_path_equal_spellings_remain_distinct(left, right);
+  }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_prefix_like_normal_components_remain_exactly_idempotent() {
+  for (input, expected) in [("...:/..", "."), ("..:/../", r".\")] {
+    assert_exact_normalization(input, expected);
   }
 }

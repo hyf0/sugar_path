@@ -30,7 +30,7 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 
 ## Normalization coverage checkpoint
 
-- An independent public normalization model resolves its own root and component stack without calling SugarPath or `std::path::components`, then checks exact non-consuming and consuming results plus the non-consuming `Cow` contract for 6,560 Unix and 14,040 Windows inputs. The corpus crosses relative and rooted forms, drive-relative Windows paths, clean, redundant, forward-slash Windows and trailing separators, parents, current-directory components, dot-prefixed ordinary names, case-sensitive spelling, multibyte names, and Unix backslashes as ordinary bytes.
+- An independent public normalization model resolves its own root and component stack without calling SugarPath or `std::path::components`, then checks exact non-consuming and consuming results, their exact idempotence, and the non-consuming `Cow` contract for 6,560 Unix and 14,040 Windows inputs. The corpus crosses relative and rooted forms, drive-relative Windows paths, clean, redundant, forward-slash Windows and trailing separators, parents, current-directory components, dot-prefixed ordinary names, case-sensitive spelling, multibyte names, and Unix backslashes as ordinary bytes. Direct tests prove that standard `Path` equality treats `.` and the native dot-plus-separator spelling as equal while SugarPath preserves their distinct exact outputs, Windows prefix-like ordinary components remain exactly idempotent across both normalization APIs, and WASIp1 checks the same fixed-point property through raw bytes.
 
 ## Relative-path coverage checkpoint
 

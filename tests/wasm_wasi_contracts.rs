@@ -8,16 +8,33 @@ use std::{
 
 use sugar_path::{SugarPath, SugarPathBuf};
 
+fn assert_normalizes_exactly(input: &Path, expected: &[u8]) {
+  let normalized = input.normalize();
+  assert_eq!(normalized.as_os_str().as_bytes(), expected);
+  assert_eq!(normalized.normalize().as_os_str().as_bytes(), expected);
+
+  let consumed = input.to_path_buf().into_normalized();
+  assert_eq!(consumed.as_os_str().as_bytes(), expected);
+  assert_eq!(consumed.into_normalized().as_os_str().as_bytes(), expected);
+}
+
 #[test]
 fn normalize_preserves_wasi_spelling_and_native_encoding() {
-  assert_eq!(Path::new("workspace/src/lib.rs").normalize(), Path::new("workspace/src/lib.rs"));
-  assert_eq!(
-    Path::new("workspace/./src/../dist/assets/").normalize(),
-    Path::new("workspace/dist/assets/"),
+  let dot = Path::new(".");
+  let dot_slash = Path::new("./");
+  assert_eq!(dot, dot_slash);
+  assert_ne!(dot.as_os_str().as_bytes(), dot_slash.as_os_str().as_bytes());
+  assert_normalizes_exactly(dot, b".");
+  assert_normalizes_exactly(dot_slash, b"./");
+
+  assert_normalizes_exactly(Path::new("workspace/src/lib.rs"), b"workspace/src/lib.rs");
+  assert_normalizes_exactly(
+    Path::new("workspace/./src/../dist/assets/"),
+    b"workspace/dist/assets/",
   );
 
   let invalid = PathBuf::from(OsString::from_vec(b"workspace/invalid-\x80/./file".to_vec()));
-  assert_eq!(invalid.normalize().as_os_str().as_bytes(), b"workspace/invalid-\x80/file");
+  assert_normalizes_exactly(&invalid, b"workspace/invalid-\x80/file");
 }
 
 #[test]
@@ -65,13 +82,13 @@ fn slash_policies_cover_valid_and_invalid_wasi_encoding() {
 #[test]
 fn consuming_and_string_apis_preserve_wasi_results() {
   assert_eq!(
-    PathBuf::from("workspace/./src/../dist/lib.rs").into_normalized(),
-    Path::new("workspace/dist/lib.rs"),
+    PathBuf::from("workspace/./src/../dist/lib.rs").into_normalized().as_os_str().as_bytes(),
+    b"workspace/dist/lib.rs",
   );
   assert_eq!(PathBuf::from("workspace/src/lib.rs").into_slash(), "workspace/src/lib.rs");
 
   let owned = String::from("workspace/src/lib.rs");
   assert_eq!(owned.as_path(), Path::new("workspace/src/lib.rs"));
-  assert_eq!(owned.normalize(), Path::new("workspace/src/lib.rs"));
+  assert_eq!(owned.normalize().as_os_str().as_bytes(), b"workspace/src/lib.rs");
   assert_eq!(owned.to_slash(), "workspace/src/lib.rs");
 }

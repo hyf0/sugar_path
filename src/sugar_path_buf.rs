@@ -23,7 +23,9 @@ pub trait SugarPathBuf: private::Sealed {
   /// Lexically normalizes this path while reusing its allocation when possible.
   ///
   /// The result has the same component, native-separator, drive-spelling, and
-  /// trailing-separator semantics as [`crate::SugarPath::normalize`].
+  /// trailing-separator semantics as [`crate::SugarPath::normalize`]. Its exact
+  /// host-native encoded representation is likewise idempotent on Unix,
+  /// WASIp1, and Windows.
   ///
   /// # Examples
   ///
@@ -33,7 +35,7 @@ pub trait SugarPathBuf: private::Sealed {
   ///
   /// let input = PathBuf::from("workspace").join("src").join("..").join("dist");
   /// let expected = Path::new("workspace").join("dist");
-  /// assert_eq!(input.into_normalized(), expected);
+  /// assert_eq!(input.into_normalized().as_os_str(), expected.as_os_str());
   /// ```
   #[must_use]
   fn into_normalized(self) -> PathBuf;
