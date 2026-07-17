@@ -55,6 +55,12 @@ pub trait SugarPath: private::Sealed {
   /// current-directory result may borrow the static `.` path; other results
   /// that require a new buffer are owned.
   ///
+  /// The exact host-native encoded result is idempotent: normalizing it again
+  /// preserves the same Unix or WASIp1 bytes or Windows wide units. Standard
+  /// [`Path`] equality compares components and may hide exact spelling
+  /// differences, so this does not imply one spelling for every pair of equal
+  /// `Path` values.
+  ///
   /// # Examples
   ///
   /// ```
@@ -63,7 +69,25 @@ pub trait SugarPath: private::Sealed {
   ///
   /// let input = PathBuf::from("workspace").join("src").join("..").join("dist");
   /// let expected = Path::new("workspace").join("dist");
-  /// assert_eq!(&*input.normalize(), expected);
+  /// assert_eq!(input.normalize().as_os_str(), expected.as_os_str());
+  /// ```
+  ///
+  /// Exact spelling is observable:
+  ///
+  /// ```
+  /// # #[cfg(target_family = "unix")]
+  /// # {
+  /// use std::path::Path;
+  /// use sugar_path::SugarPath;
+  ///
+  /// assert_eq!(Path::new("."), Path::new("./"));
+  ///
+  /// let dot = Path::new(".").normalize();
+  /// let dot_slash = Path::new("./").normalize();
+  /// assert_ne!(dot.as_os_str(), dot_slash.as_os_str());
+  /// assert_eq!(dot.normalize().as_os_str(), dot.as_os_str());
+  /// assert_eq!(dot_slash.normalize().as_os_str(), dot_slash.as_os_str());
+  /// # }
   /// ```
   ///
   /// # Windows

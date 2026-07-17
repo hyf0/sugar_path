@@ -25,7 +25,7 @@
 //!
 //! let normalized = input.normalize();
 //! let expected = Path::new("workspace").join("dist").join("assets");
-//! assert_eq!(&*normalized, expected);
+//! assert_eq!(normalized.as_os_str(), expected.as_os_str());
 //!
 //! // The receiver is the target: target.relative(base).
 //! let relative = normalized.relative("workspace");
@@ -67,6 +67,15 @@
 //! syntax. [`SugarPath::normalize`] preserves one trailing separator on a
 //! non-root path. [`SugarPath::relative`] returns an empty path for equal inputs
 //! and removes a target's non-root trailing separator.
+//!
+//! Normalization is exactly idempotent in the host-native encoded
+//! representation: normalizing a result again does not change its Unix or
+//! WASIp1 bytes or its Windows wide units. This does not assign one spelling to
+//! every pair that standard [`Path`](std::path::Path) comparison considers
+//! equal. For example, `.` and `./` compare equal as Unix paths, but remain
+//! distinct stable normalized spellings because one trailing separator is
+//! preserved. Compare [`Path::as_os_str`](std::path::Path::as_os_str) or the
+//! native encoded representation when exact output spelling matters.
 //!
 //! # Ownership and native encoding
 //!

@@ -31,7 +31,7 @@ let input = PathBuf::from("workspace")
 
 let normalized = input.normalize();
 let expected = Path::new("workspace").join("dist").join("assets");
-assert_eq!(&*normalized, expected);
+assert_eq!(normalized.as_os_str(), expected.as_os_str());
 
 // The receiver is the target: target.relative(base).
 let relative = normalized.relative("workspace");
@@ -64,6 +64,8 @@ For the full contract of each method — including panic conditions, Windows edg
 SugarPath rewrites path components only. It does not touch the filesystem, check existence, or resolve symbolic links. Removing `..` lexically is **not** a security boundary and does not prove filesystem containment. Use [`std::fs::canonicalize`](https://doc.rust-lang.org/std/fs/fn.canonicalize.html) when you need physical filesystem identity.
 
 [`normalize()`] removes `.` components and redundant native separators, resolves `..` against preceding normal components, and preserves one trailing separator on a non-root path. An empty path normalizes to `.`.
+
+Normalization is exactly idempotent in the host-native encoded representation: normalizing a result again does not change its Unix or WASIp1 bytes or its Windows wide units. This does not assign one spelling to every pair that standard `Path` comparison considers equal. On Unix, `Path::new(".") == Path::new("./")`, but their `OsStr` spellings differ; because SugarPath preserves one trailing separator, `.` and `./` remain distinct stable normalized outputs. Windows drive-letter spelling is likewise preserved. Compare `as_os_str()` or the native encoded representation when exact output spelling matters.
 
 ### Host-native syntax
 
