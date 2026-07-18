@@ -71,6 +71,7 @@ jobs:
               current_directory_is_cached_only_when_requested
               pure_relative_calls_initialize_and_observe_cwd_policy
               failed_cwd_lookup_does_not_poison_later_relative_calls
+              cwd_unavailable_after_successful_lookup_observes_cache_policy
               non_utf8_ambient_cwd_is_preserved
               requested_cached_current_dir_configuration_is_active
           - os: windows-latest
@@ -108,6 +109,7 @@ jobs:
               current_directory_is_cached_only_when_requested
               pure_relative_calls_initialize_and_observe_cwd_policy
               failed_cwd_lookup_does_not_poison_later_relative_calls
+              cwd_unavailable_after_successful_lookup_observes_cache_policy
               requested_cached_current_dir_configuration_is_active
     runs-on: ${{ matrix.os }}
     steps:

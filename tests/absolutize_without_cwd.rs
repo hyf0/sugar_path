@@ -2,7 +2,7 @@
 
 use std::{
   borrow::Cow,
-  env, fs,
+  env, fs, io,
   path::Path,
   process::Command,
   time::{SystemTime, UNIX_EPOCH},
@@ -12,11 +12,16 @@ use sugar_path::SugarPath;
 
 const CHILD_ENV: &str = "SUGAR_PATH_TEST_WITHOUT_CWD";
 
+fn assert_same_error(actual: &io::Error, expected: &io::Error, context: &str) {
+  assert_eq!(actual.kind(), expected.kind(), "{context} error kind");
+  assert_eq!(actual.raw_os_error(), expected.raw_os_error(), "{context} raw OS error");
+}
+
 #[test]
 fn absolute_paths_do_not_require_current_directory() {
   if let Some(doomed) = env::var_os(CHILD_ENV) {
     fs::remove_dir(&doomed).expect("remove the child's current directory");
-    assert!(env::current_dir().is_err());
+    let cwd_error = env::current_dir().expect_err("the process cwd is unavailable");
 
     let clean = Path::new("/sugar-path/file.js");
     let clean_output = clean.absolutize();
@@ -34,9 +39,21 @@ fn absolute_paths_do_not_require_current_directory() {
     assert!(matches!(dirty_try, Cow::Owned(_)));
     assert_eq!(dirty_try.as_os_str(), Path::new("/file.js").as_os_str());
 
-    assert!(Path::new("relative.js").try_absolutize().is_err());
-    assert!("relative.js".try_absolutize().is_err());
-    assert!(String::from("relative.js").try_absolutize().is_err());
+    assert_same_error(
+      &Path::new("relative.js").try_absolutize().expect_err("relative Path should need cwd"),
+      &cwd_error,
+      "relative Path try_absolutize",
+    );
+    assert_same_error(
+      &"relative.js".try_absolutize().expect_err("relative str should need cwd"),
+      &cwd_error,
+      "relative str try_absolutize",
+    );
+    assert_same_error(
+      &String::from("relative.js").try_absolutize().expect_err("relative String should need cwd"),
+      &cwd_error,
+      "relative String try_absolutize",
+    );
     assert!(std::panic::catch_unwind(|| Path::new("relative.js").absolutize()).is_err());
     assert!(
       std::panic::catch_unwind(|| {
@@ -45,6 +62,10 @@ fn absolute_paths_do_not_require_current_directory() {
       })
       .is_err(),
     );
+
+    let explicit = Path::new("relative.js").absolutize_with(Path::new("/explicit-cwd"));
+    assert_eq!(explicit.as_ref(), Path::new("/explicit-cwd/relative.js"));
+    assert!(matches!(explicit, Cow::Owned(_)));
 
     let clean_string = String::from("/sugar-path/string.js");
     let clean_string_output =

@@ -30,7 +30,7 @@ An explicit cwd must be absolute only when the operation needs it. An absolute r
 
 ## The cached current directory is process-lifetime state
 
-With `cached_current_dir`, the first operation that actually needs the ordinary process cwd initializes a `OnceLock`, and later operations reuse that path. Absolute inputs and cwd-independent relative pairs do not initialize the cache. A later `std::env::set_current_dir` after initialization is invisible to this provider. Enable the feature only when the process treats cwd as stable, or use `absolutize_with` and `relative_with` for changing or externally managed cwd state.
+With `cached_current_dir`, the first operation that actually needs the ordinary process cwd initializes a `OnceLock`, and later operations reuse that path. Absolute inputs and cwd-independent relative pairs do not initialize the cache. A later `std::env::set_current_dir`, directory removal, or permission change after initialization is invisible to this provider; it continues lexical resolution from the successful snapshot without revalidating that path. Enable the feature only when the process treats cwd as stable, or use `absolutize_with` and `relative_with` for changing or externally managed cwd state.
 
 Windows drive-relative ambient resolution is a separate case: `C:foo` needs drive C's remembered cwd, not merely the process's single cached cwd. It goes through `std::path::absolute`, so the `cached_current_dir` feature must not substitute an unrelated drive context.
 
@@ -64,6 +64,7 @@ There is no public fused relative-to-string method. The strict owned-string pipe
 - [Exact normalization identity tests](../../tests/path_identity.rs)
 - [Explicit-cwd absolutization tests](../../tests/absolutize_with.rs)
 - [Ambient cwd avoidance tests](../../tests/absolutize_without_cwd.rs)
+- [Unavailable cwd after a successful lookup](../../tests/cwd_unavailable_after_cache.rs)
 - [Slash-conversion tests](../../tests/to_slash.rs)
 - [Consuming ownership tests](../../tests/owned_api.rs)
 - [Relative-to-slash composition tests](../../tests/relative_to_slash.rs)
