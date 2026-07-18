@@ -2,7 +2,7 @@
 
 use std::{
   borrow::Cow,
-  env, fs,
+  env, fs, io,
   panic::{AssertUnwindSafe, catch_unwind},
   path::Path,
   process::Command,
@@ -13,11 +13,16 @@ use sugar_path::SugarPath;
 
 const CHILD_ENV: &str = "SUGAR_PATH_RELATIVE_WITHOUT_CWD";
 
+fn assert_same_error(actual: &io::Error, expected: &io::Error, context: &str) {
+  assert_eq!(actual.kind(), expected.kind(), "{context} error kind");
+  assert_eq!(actual.raw_os_error(), expected.raw_os_error(), "{context} raw OS error");
+}
+
 #[test]
 fn cwd_independent_relative_inputs_do_not_read_the_current_directory() {
   if let Some(doomed) = env::var_os(CHILD_ENV) {
     fs::remove_dir(&doomed).expect("remove the child's current directory");
-    assert!(env::current_dir().is_err());
+    let cwd_error = env::current_dir().expect_err("the process cwd is unavailable");
 
     let dirty =
       Path::new("./dist/assets/./temp/../index.js").relative(Path::new("dist/./chunks/../chunks"));
@@ -34,11 +39,27 @@ fn cwd_independent_relative_inputs_do_not_read_the_current_directory() {
     assert_eq!(fallible.as_os_str(), Path::new("../assets/index.js").as_os_str());
     assert!(matches!(fallible, Cow::Owned(_)));
 
-    assert!(
-      Path::new("../../dist/assets/index.js").try_relative(Path::new("../dist/chunks")).is_err(),
+    assert_same_error(
+      &Path::new("../../dist/assets/index.js")
+        .try_relative(Path::new("../dist/chunks"))
+        .expect_err("unequal leading parents should need cwd"),
+      &cwd_error,
+      "relative Path try_relative",
     );
-    assert!("../../dist/assets/index.js".try_relative("../dist/chunks").is_err());
-    assert!(String::from("../../dist/assets/index.js").try_relative("../dist/chunks").is_err(),);
+    assert_same_error(
+      &"../../dist/assets/index.js"
+        .try_relative("../dist/chunks")
+        .expect_err("unequal leading parents should need cwd for str"),
+      &cwd_error,
+      "relative str try_relative",
+    );
+    assert_same_error(
+      &String::from("../../dist/assets/index.js")
+        .try_relative("../dist/chunks")
+        .expect_err("unequal leading parents should need cwd for String"),
+      &cwd_error,
+      "relative String try_relative",
+    );
 
     let absolute_string = String::from("/workspace/src");
     let absolute_relative =

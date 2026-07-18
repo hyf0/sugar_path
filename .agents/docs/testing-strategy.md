@@ -41,7 +41,8 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - On macOS and Linux, all 224,676 pairs from the bounded short absolute spelling set plus the multibyte set are checked through the production `relative_str` dispatch and the suffix-validation helper against the slow component oracle.
 - Absolute paths with native-invalid normal components prove that equal raw encoding cancels and distinct encoding with the same lossy rendering does not, through `relative`, `try_relative`, and `relative_with` on Unix and Windows. Unix explicit-cwd rows also prove that relative resolution preserves native-invalid cwd components for borrowed and owned context arguments.
 - Windows drive-relative rows apply the same exact comparison before shared-context cancellation and preserve invalid-wide components while resolving against explicit borrowed and owned cwd arguments.
-- Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, preserves the ambient error and panic checks for dependent `Path`, `str`, and `String` calls, and proves that a valid explicit cwd still succeeds.
+- Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, compares dependent fallible calls with the direct `current_dir` error, preserves strict panic checks for `Path`, `str`, and `String` calls, and proves that a valid explicit cwd still succeeds.
+- A Unix child process successfully reads cwd before removing that directory, then requires default mode to expose the subsequent ambient error while `cached_current_dir` continues producing exact owned results from the successful process-lifetime snapshot.
 - Known-UTF-8 `str` and `String` receivers prove exact clean-trailing and dirty normalization contracts, receiver-only borrowing, explicit and ambient relative context forwarding, and cached-cwd behavior on Unix and Windows. Unix deleted-cwd rows also prove cwd-independent success and strict cwd-dependent panics for string receivers.
 - A Linux child process starts in a real cwd containing an invalid native byte and requires `absolutize`, `try_absolutize`, `relative`, and `try_relative` to preserve that byte exactly under both cwd policies. Linux supplies this executable filesystem case because macOS rejects the invalid-byte directory name; explicit-cwd tests continue to cover native-invalid Unix composition independently of the host filesystem.
 
@@ -71,6 +72,7 @@ Any change to a public contract, platform branch, native-encoding comparison, cl
 - [Independent bounded public normalization model](../../tests/public_normalize_model.rs)
 - [Relative ownership and lifetime contracts](../../tests/relative_borrowing.rs)
 - [Unavailable-cwd relative behavior](../../tests/relative_without_cwd.rs)
+- [Unavailable cwd after a successful lookup](../../tests/cwd_unavailable_after_cache.rs)
 - [Known-UTF-8 string receiver ownership](../../tests/string_receiver_contracts.rs)
 - [Native-invalid ambient cwd preservation](../../tests/non_utf8_ambient_cwd.rs)
 - [Native-invalid exact comparison](../../tests/invalid_encoding.rs)
