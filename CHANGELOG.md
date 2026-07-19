@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [3.0.1](https://github.com/hyfdev/sugar_path/compare/sugar_path-v3.0.0...sugar_path-v3.0.1) - 2026-07-19
+
+### Fixed
+
+- preserve borrowing for Windows drive-relative paths ([#67](https://github.com/hyfdev/sugar_path/pull/67))
+
+### Other
+
+- cover Windows drive-relative resolution errors ([#71](https://github.com/hyfdev/sugar_path/pull/71))
+- cover unavailable cwd after successful lookup ([#70](https://github.com/hyfdev/sugar_path/pull/70))
+- define exact normalization contract ([#69](https://github.com/hyfdev/sugar_path/pull/69))
+- preserve non-UTF-8 ambient cwd ([#68](https://github.com/hyfdev/sugar_path/pull/68))
+- cover Windows invalid drive paths ([#66](https://github.com/hyfdev/sugar_path/pull/66))
+- preserve invalid cwd encoding ([#65](https://github.com/hyfdev/sugar_path/pull/65))
+- cover string receiver context contracts ([#64](https://github.com/hyfdev/sugar_path/pull/64))
+- harden validation and release gates
+- enforce cross-target test durability
+- model public relative semantics ([#58](https://github.com/hyfdev/sugar_path/pull/58))
+- cover absolutize contracts ([#55](https://github.com/hyfdev/sugar_path/pull/55))
+- cover Windows encoded roots ([#54](https://github.com/hyfdev/sugar_path/pull/54))
+- cover slash conversion policies ([#53](https://github.com/hyfdev/sugar_path/pull/53))
+- enforce native relative coverage ([#52](https://github.com/hyfdev/sugar_path/pull/52))
+- cover owned normalization contracts ([#57](https://github.com/hyfdev/sugar_path/pull/57))
+- cover cached cwd contracts ([#56](https://github.com/hyfdev/sugar_path/pull/56))
+- avoid rescanning relative base on macOS ARM64 ([#51](https://github.com/hyfdev/sugar_path/pull/51))
+- avoid redundant relative scans on macOS ARM64 ([#50](https://github.com/hyfdev/sugar_path/pull/50))
+- reduce redundant scans in path hot paths ([#47](https://github.com/hyfdev/sugar_path/pull/47))
+- standardize non-UTF-8 benchmark names ([#49](https://github.com/hyfdev/sugar_path/pull/49))
+- extend path performance baselines ([#48](https://github.com/hyfdev/sugar_path/pull/48))
+- resolve unequal relative pairs without dual absolutize ([#44](https://github.com/hyfdev/sugar_path/pull/44))
+
 ## [3.0.0](https://github.com/hyf0/sugar_path/compare/v2.0.1...v3.0.0) - 2026-07-12
 
 Breaking redesign of the public path APIs for borrowing, explicit cwd, and owned-buffer reuse ([#40](https://github.com/hyf0/sugar_path/pull/40)). Public docs and continuous CI allocation gates were aligned with that surface ([#42](https://github.com/hyf0/sugar_path/pull/42)). Performance baselines landed first as [PR #41](https://github.com/hyf0/sugar_path/pull/41).
