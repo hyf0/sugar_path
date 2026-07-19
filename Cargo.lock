@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "sugar_path"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "arcstr",
  "criterion2",
