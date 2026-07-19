@@ -41,6 +41,7 @@ The matrix is interaction-aware. A platform root kind must be crossed with encod
 - On macOS and Linux, all 224,676 pairs from the bounded short absolute spelling set plus the multibyte set are checked through the production `relative_str` dispatch and the suffix-validation helper against the slow component oracle.
 - Absolute paths with native-invalid normal components prove that equal raw encoding cancels and distinct encoding with the same lossy rendering does not, through `relative`, `try_relative`, and `relative_with` on Unix and Windows. Unix explicit-cwd rows also prove that relative resolution preserves native-invalid cwd components for borrowed and owned context arguments.
 - Windows drive-relative rows apply the same exact comparison before shared-context cancellation and preserve invalid-wide components while resolving against explicit borrowed and owned cwd arguments.
+- A Windows drive-relative path containing an embedded NUL deterministically fails in `std::path::absolute` before WinAPI dispatch. Native tests require `try_absolutize` and both target/base roles of `try_relative` to preserve the exact error kind and raw OS error, while their strict counterparts panic; CI requires this contract to register in both default and cached-cwd configurations.
 - Unavailable Unix cwd coverage pins exact successful output and `Cow` variants for cwd-independent fallible calls, compares dependent fallible calls with the direct `current_dir` error, preserves strict panic checks for `Path`, `str`, and `String` calls, and proves that a valid explicit cwd still succeeds.
 - A Unix child process successfully reads cwd before removing that directory, then requires default mode to expose the subsequent ambient error while `cached_current_dir` continues producing exact owned results from the successful process-lifetime snapshot.
 - Known-UTF-8 `str` and `String` receivers prove exact clean-trailing and dirty normalization contracts, receiver-only borrowing, explicit and ambient relative context forwarding, and cached-cwd behavior on Unix and Windows. Unix deleted-cwd rows also prove cwd-independent success and strict cwd-dependent panics for string receivers.
@@ -76,4 +77,5 @@ Any change to a public contract, platform branch, native-encoding comparison, cl
 - [Known-UTF-8 string receiver ownership](../../tests/string_receiver_contracts.rs)
 - [Native-invalid ambient cwd preservation](../../tests/non_utf8_ambient_cwd.rs)
 - [Native-invalid exact comparison](../../tests/invalid_encoding.rs)
+- [Windows drive-relative error propagation](../../tests/windows_drive_relative_errors.rs)
 - [Production dispatch and short-path oracle](../../src/impl_sugar_path.rs)
