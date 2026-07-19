@@ -89,6 +89,7 @@ jobs:
               utf8_string_receivers_borrow_only_from_the_receiver
               windows_path_equality_does_not_define_normalized_spelling
               windows_prefix_like_normal_components_remain_exactly_idempotent
+              windows_drive_relative_resolution_propagates_native_errors
               current_directory_is_cached_only_when_requested
               pure_relative_calls_initialize_and_observe_cwd_policy
               requested_cached_current_dir_configuration_is_active
